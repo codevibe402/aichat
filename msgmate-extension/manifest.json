@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "MsgMate — AI Chat Assistant",
+  "version": "1.0.0",
+  "description": "AI-powered reply suggestions, message scheduling, and cross-platform inbox for Gmail, WhatsApp, Telegram, Instagram, Slack, Discord, Teams & more.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://mail.google.com/*",
+    "https://web.whatsapp.com/*",
+    "https://web.telegram.org/*",
+    "https://www.instagram.com/*",
+    "https://app.slack.com/*",
+    "https://discord.com/*",
+    "https://twitter.com/*",
+    "https://x.com/*",
+    "https://teams.microsoft.com/*",
+    "https://chat.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service_worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://mail.google.com/*",
+        "https://web.whatsapp.com/*",
+        "https://web.telegram.org/*",
+        "https://www.instagram.com/*",
+        "https://app.slack.com/*",
+        "https://discord.com/*",
+        "https://twitter.com/*",
+        "https://x.com/*",
+        "https://teams.microsoft.com/*",
+        "https://chat.google.com/*"
+      ],
+      "js": ["content/injector.js"],
+      "css": ["content/overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "MsgMate"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
