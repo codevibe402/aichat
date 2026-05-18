@@ -1,0 +1,121 @@
+import { env } from "@/lib/env";
+
+type GroqChatResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+  };
+  error?: {
+    message: string;
+  };
+};
+
+async function callGroq(prompt: string, maxTokens: number) {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.GROQ_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: env.GROQ_MODEL,
+      max_tokens: maxTokens,
+      temperature: 0.4,
+      response_format: {
+        type: "json_object"
+      },
+      messages: [
+        {
+          role: "system",
+          content: "Return only valid JSON. Do not include markdown, code fences, or extra commentary."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    })
+  });
+
+  const data = (await response.json()) as GroqChatResponse;
+
+  if (!response.ok || data.error) {
+    throw new Error(data.error?.message ?? `Groq request failed with ${response.status}`);
+  }
+
+  const text = data.choices?.[0]?.message?.content;
+  if (!text) {
+    throw new Error("Groq returned an empty response");
+  }
+
+  return {
+    text,
+    usage: data.usage
+  };
+}
+
+export async function generateReplies(input: {
+  platform?: string;
+  tone: string;
+  context?: string;
+}) {
+  const prompt = `You are MsgMate, a messaging assistant. Generate 3 distinct reply options.
+Platform: ${input.platform ?? "unknown"}
+Tone: ${input.tone}
+Context: ${input.context || "Generate general greeting/opener replies"}
+
+Return only valid JSON in this exact shape:
+{"replies":["Reply 1","Reply 2","Reply 3"]}`;
+
+  const result = await callGroq(prompt, 500);
+  const parsed = parseJsonObject(result.text) as { replies?: string[] };
+
+  if (!Array.isArray(parsed.replies) || parsed.replies.length !== 3) {
+    throw new Error("AI response did not include exactly 3 replies");
+  }
+
+  return {
+    replies: parsed.replies,
+    usage: {
+      input_tokens: result.usage?.prompt_tokens,
+      output_tokens: result.usage?.completion_tokens
+    }
+  };
+}
+
+function parseJsonObject(text: string) {
+  const trimmed = text.trim();
+
+  try {
+    return JSON.parse(trimmed);
+  } catch (_error) {
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (!match) {
+      throw new Error("AI response was not valid JSON");
+    }
+
+    return JSON.parse(match[0]);
+  }
+}
+
+export async function summarizeChat(input: { conversation: string }) {
+  const prompt = `Summarize this conversation in 3-5 concise bullet points. Capture key decisions, action items, and sentiment.
+
+Conversation:
+${input.conversation}`;
+
+  const result = await callGroq(prompt, 500);
+
+  return {
+    summary: result.text.trim(),
+    usage: {
+      input_tokens: result.usage?.prompt_tokens,
+      output_tokens: result.usage?.completion_tokens
+    }
+  };
+}

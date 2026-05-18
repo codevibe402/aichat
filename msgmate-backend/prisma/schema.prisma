@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ScheduleStatus {
+  PENDING
+  DUE
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+  NEEDS_USER_LOGIN
+  PLATFORM_NOT_OPEN
+  SELECTOR_FAILED
+}
+
+enum AiRequestType {
+  REPLY
+  SUMMARY
+}
+
+model User {
+  id                String             @id @default(cuid())
+  externalId        String             @unique
+  email             String?            @unique
+  name              String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  settings          UserSettings?
+  scheduledMessages ScheduledMessage[]
+  aiRequests        AiRequest[]
+}
+
+model UserSettings {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  defaultTone    String   @default("friendly")
+  timezone       String   @default("UTC")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ScheduledMessage {
+  id            String         @id @default(cuid())
+  userId        String
+  platform      String
+  text          String
+  targetUrl     String?
+  sendAt        DateTime
+  status        ScheduleStatus @default(PENDING)
+  attempts      Int            @default(0)
+  lastError     String?
+  deliveredAt   DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, sendAt])
+  @@index([status, sendAt])
+}
+
+model AiRequest {
+  id          String        @id @default(cuid())
+  userId      String
+  type        AiRequestType
+  platform    String?
+  tone        String?
+  inputTokens Int?
+  outputTokens Int?
+  createdAt   DateTime      @default(now())
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}

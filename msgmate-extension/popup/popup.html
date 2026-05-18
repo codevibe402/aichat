@@ -277,16 +277,31 @@
   <div class="logo-sub">AI Chat Assistant · 9 Platforms</div>
 </div>
 
-<div class="body">
+  <div class="body">
 
-  <!-- API Key -->
   <div class="section">
-    <div class="section-title">Anthropic API Key</div>
+    <div class="section-title">Assistant</div>
+    <button class="save-btn" data-open-panel="ai">Open AI Reply</button>
+    <button class="save-btn" data-open-panel="schedule">Open Schedule</button>
+    <button class="save-btn" data-open-panel="summary">Open Summary</button>
+  </div>
+
+  <!-- Backend Settings -->
+  <div class="section">
+    <div class="section-title">Backend URL</div>
     <div class="api-key-wrap">
-      <input type="password" class="api-key-input" id="apiKeyInput" placeholder="sk-ant-api03-...">
+      <input type="text" class="api-key-input" id="backendUrlInput" placeholder="http://localhost:3000">
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Backend API Key</div>
+    <div class="api-key-wrap">
+      <input type="password" class="api-key-input" id="apiKeyInput" placeholder="APP_API_KEY from backend .env">
       <button class="toggle-key" id="toggleKey">👁</button>
     </div>
-    <button class="save-btn" id="saveBtn">Save Key</button>
+    <button class="save-btn" id="saveBtn">Save Backend Settings</button>
+    <button class="save-btn" id="testBtn">Test Backend</button>
   </div>
 
   <!-- Status -->
@@ -336,7 +351,7 @@
   <div class="section">
     <div class="section-title">How to Use</div>
     <div class="how-to">
-      1. <strong>Save your API key</strong> above<br>
+      1. <strong>Save backend settings</strong> above<br>
       2. <strong>Open any supported platform</strong> in a tab<br>
       3. <strong>Click the purple ✦ button</strong> on the page<br>
       4. Use <strong>AI Reply</strong>, <strong>Schedule</strong>, or <strong>Summary</strong>
@@ -345,7 +360,7 @@
 
 </div>
 
-<div class="footer">MsgMate v1.0 · Powered by Claude AI</div>
+<div class="footer">MsgMate v1.0 · Powered by Groq</div>
 
 <script src="popup.js"></script>
 </body>

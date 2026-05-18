@@ -27,8 +27,8 @@
 
   // ── Input selectors per platform ─────────────────────────────────────────
   const INPUT_SELECTORS = {
-    gmail: '[aria-label="Message Body"]',
-    whatsapp: '[data-tab="10"][contenteditable="true"], [data-testid="conversation-compose-box-input"]',
+    gmail: '[aria-label="Message Body"][contenteditable="true"], [g_editable="true"][contenteditable="true"], div[role="textbox"][contenteditable="true"]',
+    whatsapp: 'footer [contenteditable="true"][role="textbox"], [aria-label="Type a message"], [aria-label="Type a message"][contenteditable="true"], [data-tab="10"][contenteditable="true"], [data-lexical-editor="true"][contenteditable="true"]',
     telegram: '.input-message-input[contenteditable="true"]',
     instagram: '[placeholder="Message..."], [aria-label="Message"]',
     slack: '[data-qa="message_input"] [contenteditable="true"]',
@@ -58,18 +58,34 @@
 
   document.body.appendChild(fab);
   document.body.appendChild(panel);
+  hydrateAutoContext();
 
   // ── Event listeners ───────────────────────────────────────────────────────
   fab.addEventListener('click', () => {
     panel.classList.toggle('visible');
-    if (panel.classList.contains('visible')) loadScheduled();
+    if (panel.classList.contains('visible')) {
+      refreshActiveTabData();
+    }
   });
 
   // Close when clicking outside
   document.addEventListener('click', (e) => {
-    if (!panel.contains(e.target) && e.target !== fab) {
+    if (!panel.contains(e.target) && !fab.contains(e.target)) {
       panel.classList.remove('visible');
     }
+  });
+
+  chrome.runtime.onMessage.addListener((req, _sender, sendResponse) => {
+    if (req.action !== 'openMsgmatePanel') return;
+
+    if (req.tab && ['ai', 'schedule', 'summary'].includes(req.tab)) {
+      activeTab = req.tab;
+      renderActiveTab();
+    }
+
+    panel.classList.add('visible');
+    refreshActiveTabData();
+    sendResponse({ success: true });
   });
 
   // Tab switching
@@ -133,15 +149,30 @@
       t.classList.toggle('active', t.dataset.tab === activeTab);
     });
     document.getElementById('msgmate-body').innerHTML = renderTabContent(activeTab);
+    if (activeTab === 'ai') hydrateAutoContext();
+    if (activeTab === 'summary') hydrateAutoSummary();
+    if (activeTab === 'schedule') loadScheduled();
+  }
+
+  function refreshActiveTabData() {
+    if (activeTab === 'ai') {
+      hydrateAutoContext({ force: true });
+      setTimeout(() => hydrateAutoContext({ force: true }), 500);
+      setTimeout(() => hydrateAutoContext({ force: true }), 1200);
+    }
+    if (activeTab === 'summary') {
+      hydrateAutoSummary({ force: true });
+      setTimeout(() => hydrateAutoSummary({ force: true }), 500);
+    }
     if (activeTab === 'schedule') loadScheduled();
   }
 
   function renderTabContent(tab) {
     if (tab === 'ai') return `
       <div class="msgmate-section">
-        <div class="msgmate-label">Context (optional)</div>
+        <div class="msgmate-label">Detected message context</div>
         <textarea class="msgmate-textarea" id="msgmate-context" rows="3"
-          placeholder="Paste the message you're replying to, or describe the situation..."></textarea>
+          placeholder="Open a message thread and MsgMate will read it automatically..."></textarea>
       </div>
       <div class="msgmate-section">
         <div class="msgmate-label">Tone</div>
@@ -180,9 +211,9 @@
 
     if (tab === 'summary') return `
       <div class="msgmate-section">
-        <div class="msgmate-label">Paste chat here</div>
+        <div class="msgmate-label">Detected chat</div>
         <textarea class="msgmate-textarea" id="msgmate-chat-input" rows="6"
-          placeholder="Paste your conversation here and click Summarize..."></textarea>
+          placeholder="Open a conversation and MsgMate will read it automatically..."></textarea>
         <button class="msgmate-btn msgmate-btn-primary" id="msgmate-summarize-btn" style="margin-top:8px">📋 Summarize</button>
         <div id="msgmate-summary-result"></div>
       </div>`;
@@ -191,7 +222,30 @@
   }
 
   // ── AI Reply Generation ───────────────────────────────────────────────────
+  function hydrateAutoContext(options = {}) {
+    const contextEl = document.getElementById('msgmate-context');
+    if (!contextEl || (contextEl.value.trim() && !options.force)) return;
+
+    const context = extractConversationContext();
+    if (context) {
+      contextEl.value = context;
+      contextEl.rows = Math.min(8, Math.max(3, context.split('\n').length));
+    }
+  }
+
+  function hydrateAutoSummary(options = {}) {
+    const chatEl = document.getElementById('msgmate-chat-input');
+    if (!chatEl || (chatEl.value.trim() && !options.force)) return;
+
+    const context = extractConversationContext();
+    if (context) {
+      chatEl.value = context;
+      chatEl.rows = Math.min(10, Math.max(6, context.split('\n').length));
+    }
+  }
+
   async function generateAIReply() {
+    hydrateAutoContext();
     const context = document.getElementById('msgmate-context')?.value || '';
     const area = document.getElementById('msgmate-suggestions-area');
     if (!area) return;
@@ -202,36 +256,17 @@
     </div>`;
 
     try {
-      const { apiKey = '' } = await chrome.storage.local.get('apiKey');
-
-      const prompt = `You are a messaging assistant. Generate 3 distinct reply options for the following context.
-Platform: ${platformName}
-Tone: ${selectedTone}
-Context: ${context || 'Generate general greeting/opener replies'}
-
-Return ONLY a JSON array of 3 strings, no explanation, no markdown. Example:
-["Reply 1 here", "Reply 2 here", "Reply 3 here"]`;
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 500,
-          messages: [{ role: 'user', content: prompt }]
-        })
+      const data = await chrome.runtime.sendMessage({
+        action: 'generateReplies',
+        data: {
+          platform: currentPlatform,
+          tone: selectedTone,
+          context
+        }
       });
 
-      const data = await response.json();
-
-      if (data.error) throw new Error(data.error.message);
-
-      const text = data.content[0].text.trim();
-      const replies = JSON.parse(text);
+      if (data.error) throw new Error(data.error);
+      const replies = data.replies || [];
 
       area.innerHTML = `
         <div class="msgmate-label" style="margin-top:10px">Suggestions — click to use</div>
@@ -241,8 +276,8 @@ Return ONLY a JSON array of 3 strings, no explanation, no markdown. Example:
     } catch (err) {
       area.innerHTML = `
         <div class="msgmate-summary-box" style="color:#f87171;margin-top:10px">
-          ${err.message.includes('401') || err.message.includes('api_key')
-            ? '🔑 API key missing or invalid. Set it in the extension popup.'
+          ${err.message.includes('Unauthorized') || err.message.includes('API key')
+            ? '🔑 Backend key missing or invalid. Set it in the extension popup.'
             : '⚠️ Error: ' + err.message}
         </div>`;
     }
@@ -260,28 +295,15 @@ Return ONLY a JSON array of 3 strings, no explanation, no markdown. Example:
     </div>`;
 
     try {
-      const { apiKey = '' } = await chrome.storage.local.get('apiKey');
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 400,
-          messages: [{
-            role: 'user',
-            content: `Summarize this conversation in 3-5 bullet points. Be concise and capture key decisions, action items, and sentiment.\n\nConversation:\n${chatText}`
-          }]
-        })
+      const data = await chrome.runtime.sendMessage({
+        action: 'summarizeChat',
+        data: {
+          conversation: chatText
+        }
       });
 
-      const data = await response.json();
-      if (data.error) throw new Error(data.error.message);
-      const summary = data.content[0].text;
+      if (data.error) throw new Error(data.error);
+      const summary = data.summary;
 
       result.innerHTML = `<div class="msgmate-summary-box" style="margin-top:10px">${summary.replace(/\n/g,'<br>')}</div>`;
     } catch (err) {
@@ -311,6 +333,8 @@ Return ONLY a JSON array of 3 strings, no explanation, no markdown. Example:
       document.getElementById('msgmate-sched-text').value = '';
       showToast('✅ Message scheduled!');
       loadScheduled();
+    } else {
+      showToast(response?.error || 'Could not schedule message');
     }
   }
 
@@ -353,24 +377,218 @@ Return ONLY a JSON array of 3 strings, no explanation, no markdown. Example:
     const selector = INPUT_SELECTORS[currentPlatform];
     if (!selector) return showToast('Auto-fill not supported here. Text copied!', true, text);
 
-    const el = document.querySelector(selector);
+    const el = findBestInput(selector);
     if (!el) return showToast('Could not find input box. Text copied!', true, text);
 
-    el.focus();
-    if (el.getAttribute('contenteditable') === 'true') {
-      el.textContent = text;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    } else {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      if (setter) { setter.call(el, text); el.dispatchEvent(new Event('input', { bubbles: true })); }
-      else el.value = text;
+    try {
+      insertIntoInput(el, text);
+      showToast('✅ Text inserted!');
+      panel.classList.remove('visible');
+    } catch (err) {
+      console.warn('[MsgMate] Insert failed:', err);
+      showToast('Could not insert text. Text copied!', true, text);
     }
-
-    showToast('✅ Text inserted!');
-    panel.classList.remove('visible');
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+  function extractConversationContext() {
+    const selectedText = window.getSelection()?.toString().trim();
+    if (selectedText && selectedText.length > 20) {
+      return cleanExtractedText(selectedText);
+    }
+
+    const platformExtractors = {
+      gmail: extractGmailContext,
+      googlechat: extractGoogleChatContext,
+      whatsapp: extractWhatsAppContext,
+      telegram: extractContentEditableChatContext,
+      slack: extractContentEditableChatContext,
+      discord: extractContentEditableChatContext,
+      instagram: extractContentEditableChatContext,
+      twitter: extractContentEditableChatContext,
+      x: extractContentEditableChatContext,
+      teams: extractContentEditableChatContext
+    };
+
+    const extractor = platformExtractors[currentPlatform];
+    const text = extractor ? extractor() : '';
+    return cleanExtractedText(text);
+  }
+
+  function findBestInput(selector) {
+    const active = document.activeElement;
+    if (active && typeof active.matches === 'function' && active.matches(selector) && isVisible(active)) {
+      return active;
+    }
+
+    const inputs = Array.from(document.querySelectorAll(selector)).filter(isVisible);
+    if (inputs.length === 0) return null;
+
+    const editableInputs = inputs.filter(el =>
+      el.getAttribute('contenteditable') === 'true' ||
+      el.tagName === 'TEXTAREA' ||
+      el.tagName === 'INPUT'
+    );
+
+    return editableInputs.at(-1) || inputs.at(-1);
+  }
+
+  function insertIntoInput(el, text) {
+    el.focus();
+
+    if (el.getAttribute('contenteditable') === 'true') {
+      const selection = window.getSelection();
+      if (!selection) {
+        el.textContent = text;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return;
+      }
+
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      const inserted = typeof document.execCommand === 'function'
+        ? document.execCommand('insertText', false, text)
+        : false;
+      if (!inserted) {
+        el.textContent = text;
+      }
+
+      el.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: text
+      }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
+
+    const prototype = el.tagName === 'TEXTAREA'
+      ? window.HTMLTextAreaElement.prototype
+      : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+
+    if (setter) {
+      setter.call(el, text);
+    } else {
+      el.value = text;
+    }
+
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function extractGmailContext() {
+    const subject = document.querySelector('h2.hP')?.innerText || '';
+    const sender = document.querySelector('.gD[email], .go')?.getAttribute('email') ||
+      document.querySelector('.gD, .go')?.innerText || '';
+
+    const messageBodies = Array.from(document.querySelectorAll('.a3s.aiL, .a3s, [data-message-id] .ii, [role="main"] .adn'))
+      .filter(el => isVisible(el))
+      .map(el => el.innerText)
+      .map(cleanExtractedText)
+      .filter(text => text.length > 30);
+
+    if (messageBodies.length > 0) {
+      return [
+        subject ? `Subject: ${subject}` : '',
+        sender ? `From: ${sender}` : '',
+        messageBodies.slice(-3).join('\n\n---\n\n')
+      ].filter(Boolean).join('\n\n');
+    }
+
+    const visibleThreadText = getVisibleTextFromRoot(document.querySelector('[role="main"]') || document.body);
+    return [
+      subject ? `Subject: ${subject}` : '',
+      sender ? `From: ${sender}` : '',
+      visibleThreadText
+    ].filter(Boolean).join('\n\n');
+  }
+
+  function extractGoogleChatContext() {
+    const messages = Array.from(document.querySelectorAll('[data-message-id], [aria-label*="Message"]'))
+      .filter(el => isVisible(el))
+      .map(el => el.innerText)
+      .filter(Boolean);
+
+    return messages.slice(-20).join('\n\n');
+  }
+
+  function extractWhatsAppContext() {
+    const chatTitle = document.querySelector('header span[title]')?.getAttribute('title') || '';
+    const messages = Array.from(document.querySelectorAll(
+      '[data-pre-plain-text], .message-in, .message-out, [role="row"]'
+    ))
+      .filter(el => isVisible(el))
+      .map(el => {
+        const meta = el.getAttribute('data-pre-plain-text') || '';
+        const text = Array.from(el.querySelectorAll('span.selectable-text, [dir="ltr"], [dir="auto"]'))
+          .map(child => child.innerText || child.textContent || '')
+          .filter(Boolean)
+          .join(' ');
+        return `${meta} ${text}`.trim();
+      })
+      .map(cleanExtractedText)
+      .filter(text => text.length > 1);
+
+    return [
+      chatTitle ? `Chat: ${chatTitle}` : '',
+      messages.slice(-30).join('\n')
+    ].filter(Boolean).join('\n\n');
+  }
+
+  function extractContentEditableChatContext() {
+    const candidates = Array.from(document.querySelectorAll('[role="listitem"], [data-list-item-id], article, main div'))
+      .filter(el => isVisible(el))
+      .map(el => el.innerText)
+      .filter(text => text && text.length > 15 && text.length < 1500);
+
+    return candidates.slice(-20).join('\n\n');
+  }
+
+  function cleanExtractedText(text) {
+    return (text || '')
+      .replace(/\u00a0/g, ' ')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .filter(line => !/^(reply|forward|archive|report spam|delete|mark unread|snoozed?|more)$/i.test(line))
+      .join('\n')
+      .slice(0, 8000);
+  }
+
+  function getVisibleTextFromRoot(root) {
+    const skipSelectors = [
+      '#msgmate-panel',
+      '#msgmate-fab',
+      '[aria-label="Message Body"]',
+      '[g_editable="true"]',
+      '[role="textbox"]',
+      '.nH.Hd',
+      '.gb_',
+      '.aKh'
+    ].join(',');
+
+    return Array.from(root.querySelectorAll('h1, h2, h3, span, div, p, td'))
+      .filter(el => !el.closest(skipSelectors))
+      .filter(isVisible)
+      .map(el => el.innerText || el.textContent || '')
+      .map(text => text.trim())
+      .filter(text => text.length > 20 && text.length < 2000)
+      .filter((text, index, list) => list.indexOf(text) === index)
+      .slice(-30)
+      .join('\n');
+  }
+
+  function isVisible(el) {
+    const rect = el.getBoundingClientRect();
+    const style = window.getComputedStyle(el);
+    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+  }
+
   function showToast(msg, copy = false, copyText = '') {
     if (copy && copyText) navigator.clipboard.writeText(copyText).catch(() => {});
 

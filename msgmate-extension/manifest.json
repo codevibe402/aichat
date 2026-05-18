@@ -21,7 +21,8 @@
     "https://twitter.com/*",
     "https://x.com/*",
     "https://teams.microsoft.com/*",
-    "https://chat.google.com/*"
+    "https://chat.google.com/*",
+    "http://localhost:3000/*"
   ],
   "background": {
     "service_worker": "background/service_worker.js"

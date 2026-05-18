@@ -1,57 +1,251 @@
 // MsgMate Background Service Worker
-// Handles scheduled messages via chrome.alarms API
+// Talks to the backend for AI, schedule storage, due-message polling, and status updates.
+
+const DEFAULT_BACKEND_URL = 'http://localhost:3000';
+const DUE_POLL_ALARM = 'msgmate_poll_due';
+
+chrome.alarms.create(DUE_POLL_ALARM, { periodInMinutes: 1 });
+
+chrome.runtime.onInstalled.addListener(async () => {
+  await ensureClientConfig();
+  chrome.alarms.create(DUE_POLL_ALARM, { periodInMinutes: 1 });
+});
+
+chrome.runtime.onStartup.addListener(async () => {
+  await ensureClientConfig();
+  chrome.alarms.create(DUE_POLL_ALARM, { periodInMinutes: 1 });
+});
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === DUE_POLL_ALARM) {
+    await processDueSchedules();
+    return;
+  }
+
+  // Backward compatibility for schedules created before backend wiring.
   if (!alarm.name.startsWith('msgmate_scheduled_')) return;
+});
 
-  const scheduleId = alarm.name.replace('msgmate_scheduled_', '');
-  const { scheduledMessages = [] } = await chrome.storage.local.get('scheduledMessages');
-  const msg = scheduledMessages.find(m => m.id === scheduleId);
+chrome.runtime.onMessage.addListener((req, _sender, sendResponse) => {
+  if (req.action === 'generateReplies') {
+    backendRequest('/api/ai/replies', {
+      method: 'POST',
+      body: req.data
+    }).then(sendResponse).catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
 
-  if (!msg) return;
+  if (req.action === 'summarizeChat') {
+    backendRequest('/api/ai/summary', {
+      method: 'POST',
+      body: req.data
+    }).then(sendResponse).catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
 
-  // Find or open the target tab
+  if (req.action === 'scheduleMessage') {
+    createSchedule(req.data).then(sendResponse).catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (req.action === 'cancelSchedule') {
+    cancelSchedule(req.id).then(sendResponse).catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (req.action === 'getScheduled') {
+    getSchedules().then(sendResponse).catch(() => sendResponse([]));
+    return true;
+  }
+
+  if (req.action === 'testBackend') {
+    backendRequest('/api/health').then(sendResponse).catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+});
+
+async function ensureClientConfig() {
+  const { backendUrl, msgmateUserId } = await chrome.storage.local.get(['backendUrl', 'msgmateUserId']);
+  const updates = {};
+
+  if (!backendUrl) {
+    updates.backendUrl = DEFAULT_BACKEND_URL;
+  }
+
+  if (!msgmateUserId) {
+    updates.msgmateUserId = crypto.randomUUID();
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await chrome.storage.local.set(updates);
+  }
+}
+
+async function getBackendConfig() {
+  await ensureClientConfig();
+
+  const {
+    backendUrl = DEFAULT_BACKEND_URL,
+    backendApiKey = '',
+    msgmateUserId
+  } = await chrome.storage.local.get(['backendUrl', 'backendApiKey', 'msgmateUserId']);
+
+  if (!backendApiKey) {
+    throw new Error('Backend API key missing. Save it from the MsgMate popup.');
+  }
+
+  return {
+    backendUrl: backendUrl.replace(/\/$/, ''),
+    backendApiKey,
+    msgmateUserId
+  };
+}
+
+async function backendRequest(path, options = {}) {
+  const { backendUrl, backendApiKey, msgmateUserId } = await getBackendConfig();
+
+  const response = await fetch(`${backendUrl}${path}`, {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-msgmate-api-key': backendApiKey,
+      'x-msgmate-user-id': msgmateUserId,
+      ...(options.headers || {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.error || `Backend request failed with ${response.status}`);
+  }
+
+  return data;
+}
+
+async function createSchedule(data) {
+  const result = await backendRequest('/api/schedules', {
+    method: 'POST',
+    body: {
+      platform: data.platform,
+      text: data.text,
+      sendAt: new Date(data.sendAt).toISOString()
+    }
+  });
+
+  return {
+    success: true,
+    id: result.schedule.id,
+    schedule: normalizeSchedule(result.schedule)
+  };
+}
+
+async function cancelSchedule(id) {
+  await backendRequest(`/api/schedules/${id}`, { method: 'DELETE' });
+  return { success: true };
+}
+
+async function getSchedules() {
+  const result = await backendRequest('/api/schedules');
+  return (result.schedules || []).map(normalizeSchedule);
+}
+
+async function processDueSchedules() {
+  let due = [];
+
+  try {
+    const result = await backendRequest('/api/schedules/due');
+    due = result.schedules || [];
+  } catch (error) {
+    console.warn('[MsgMate] Due schedule poll failed:', error.message);
+    return;
+  }
+
+  for (const schedule of due) {
+    await markScheduleStatus(schedule.id, 'SENDING');
+    const delivery = await sendScheduledMessage(normalizeSchedule(schedule));
+
+    if (delivery.success) {
+      await markScheduleStatus(schedule.id, 'SENT');
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: 'MsgMate - Message Sent',
+        message: `Scheduled message delivered on ${schedule.platform}`
+      });
+    } else {
+      await markScheduleStatus(schedule.id, delivery.status || 'FAILED', delivery.reason);
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: 'MsgMate - Send Failed',
+        message: delivery.reason || `Could not send message on ${schedule.platform}`
+      });
+    }
+  }
+}
+
+async function markScheduleStatus(id, status, error) {
+  try {
+    await backendRequest(`/api/schedules/${id}/status`, {
+      method: 'POST',
+      body: { status, error }
+    });
+  } catch (err) {
+    console.warn('[MsgMate] Could not update schedule status:', err.message);
+  }
+}
+
+async function sendScheduledMessage(msg) {
   const tabs = await chrome.tabs.query({ url: getPlatformPattern(msg.platform) });
+  const tab = tabs[0] || await chrome.tabs.create({ url: getPlatformUrl(msg.platform), active: false });
 
-  if (tabs.length > 0) {
-    // Tab is open — inject and send
-    await chrome.scripting.executeScript({
-      target: { tabId: tabs[0].id },
+  if (!tabs[0]) {
+    await waitForTabComplete(tab.id);
+    await sleep(3000);
+  }
+
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
       func: injectAndSend,
       args: [msg]
     });
-  } else {
-    // Open tab and queue the message
-    const tab = await chrome.tabs.create({ url: getPlatformUrl(msg.platform), active: false });
-    // Wait for load then send
-    chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-      if (tabId === tab.id && info.status === 'complete') {
+
+    return results?.[0]?.result || { success: false, status: 'FAILED', reason: 'No injection result returned' };
+  } catch (error) {
+    return { success: false, status: 'FAILED', reason: error.message };
+  }
+}
+
+function waitForTabComplete(tabId) {
+  return new Promise((resolve) => {
+    chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
+      if (updatedTabId === tabId && info.status === 'complete') {
         chrome.tabs.onUpdated.removeListener(listener);
-        setTimeout(() => {
-          chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: injectAndSend,
-            args: [msg]
-          });
-        }, 3000);
+        resolve();
       }
     });
-  }
-
-  // Mark as sent
-  const updated = scheduledMessages.map(m =>
-    m.id === scheduleId ? { ...m, status: 'sent', sentAt: Date.now() } : m
-  );
-  await chrome.storage.local.set({ scheduledMessages: updated });
-
-  // Notify user
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icons/icon48.png',
-    title: 'MsgMate — Message Sent!',
-    message: `Scheduled message delivered on ${msg.platform}`
   });
-});
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeSchedule(schedule) {
+  return {
+    id: schedule.id,
+    text: schedule.text,
+    platform: schedule.platform,
+    sendAt: new Date(schedule.sendAt).getTime(),
+    status: String(schedule.status || 'pending').toLowerCase(),
+    createdAt: new Date(schedule.createdAt || Date.now()).getTime(),
+    sentAt: schedule.deliveredAt ? new Date(schedule.deliveredAt).getTime() : undefined,
+    error: schedule.lastError
+  };
+}
 
 function getPlatformPattern(platform) {
   const patterns = {
@@ -85,17 +279,16 @@ function getPlatformUrl(platform) {
   return urls[platform] || 'https://google.com';
 }
 
-// This function runs in the page context to find the input and send
+// This function runs in the page context to find the input and send.
 function injectAndSend(msg) {
   const selectors = {
     gmail: {
-      compose: '[data-tooltip="Compose"]',
       input: '[aria-label="Message Body"]',
       send: '[data-tooltip*="Send"]'
     },
     whatsapp: {
-      input: '[data-tab="10"][contenteditable="true"], [data-testid="conversation-compose-box-input"]',
-      send: '[data-testid="send"], [data-icon="send"]'
+      input: 'footer [contenteditable="true"][role="textbox"], [aria-label="Type a message"], [aria-label="Type a message"][contenteditable="true"], [data-tab="10"][contenteditable="true"], [data-lexical-editor="true"][contenteditable="true"]',
+      send: '[aria-label="Send"], [data-testid="send"], [data-icon="send"], button span[data-icon="send"]'
     },
     telegram: {
       input: '.input-message-input[contenteditable="true"]',
@@ -111,7 +304,7 @@ function injectAndSend(msg) {
     },
     discord: {
       input: '[role="textbox"][data-slate-editor="true"]',
-      send: null // Discord sends on Enter
+      send: null
     },
     twitter: {
       input: '[data-testid="dmComposerTextInput"]',
@@ -132,77 +325,87 @@ function injectAndSend(msg) {
   };
 
   const sel = selectors[msg.platform];
-  if (!sel) return;
+  if (!sel) {
+    return { success: false, status: 'FAILED', reason: `Unsupported platform: ${msg.platform}` };
+  }
 
-  const inputEl = document.querySelector(sel.input);
+  const inputEl = findBestInput(sel.input);
   if (!inputEl) {
-    console.warn('[MsgMate] Could not find input for', msg.platform);
+    return { success: false, status: 'SELECTOR_FAILED', reason: `Could not find input for ${msg.platform}` };
+  }
+
+  insertIntoInput(inputEl, msg.text);
+
+  if (sel.send) {
+    const sendBtn = findSendButton(sel.send);
+    if (!sendBtn) {
+      return { success: false, status: 'SELECTOR_FAILED', reason: `Could not find send button for ${msg.platform}` };
+    }
+    sendBtn.click();
+  } else {
+    inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+  }
+
+  return { success: true };
+}
+
+function findBestInput(selector) {
+  const active = document.activeElement;
+  if (active && typeof active.matches === 'function' && active.matches(selector) && isVisible(active)) {
+    return active;
+  }
+
+  return Array.from(document.querySelectorAll(selector)).filter(isVisible).at(-1) || null;
+}
+
+function insertIntoInput(el, text) {
+  el.focus();
+
+  if (el.getAttribute('contenteditable') === 'true') {
+    const selection = window.getSelection();
+    if (selection) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    const inserted = typeof document.execCommand === 'function'
+      ? document.execCommand('insertText', false, text)
+      : false;
+
+    if (!inserted) {
+      el.textContent = text;
+    }
+
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
     return;
   }
 
-  // Focus and type the message
-  inputEl.focus();
+  const prototype = el.tagName === 'TEXTAREA'
+    ? window.HTMLTextAreaElement.prototype
+    : window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
 
-  // Handle contenteditable vs input
-  if (inputEl.getAttribute('contenteditable') === 'true') {
-    inputEl.textContent = msg.text;
-    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+  if (setter) {
+    setter.call(el, text);
   } else {
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-    nativeInputValueSetter.call(inputEl, msg.text);
-    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+    el.value = text;
   }
 
-  // Wait briefly then send
-  setTimeout(() => {
-    if (sel.send) {
-      const sendBtn = document.querySelector(sel.send);
-      if (sendBtn) sendBtn.click();
-    } else {
-      // Send via Enter key (Discord, etc.)
-      inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
-    }
-  }, 800);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-// Listen for messages from popup/content scripts
-chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
-  if (req.action === 'scheduleMessage') {
-    scheduleMessage(req.data).then(sendResponse);
-    return true;
-  }
-  if (req.action === 'cancelSchedule') {
-    cancelSchedule(req.id).then(sendResponse);
-    return true;
-  }
-  if (req.action === 'getScheduled') {
-    chrome.storage.local.get('scheduledMessages').then(({ scheduledMessages = [] }) => {
-      sendResponse(scheduledMessages);
-    });
-    return true;
-  }
-});
-
-async function scheduleMessage(data) {
-  const id = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-  const { scheduledMessages = [] } = await chrome.storage.local.get('scheduledMessages');
-
-  const newMsg = { ...data, id, status: 'pending', createdAt: Date.now() };
-  scheduledMessages.push(newMsg);
-  await chrome.storage.local.set({ scheduledMessages });
-
-  const delayMs = data.sendAt - Date.now();
-  if (delayMs > 0) {
-    chrome.alarms.create(`msgmate_scheduled_${id}`, { when: data.sendAt });
-  }
-
-  return { success: true, id };
+function findSendButton(selector) {
+  const direct = Array.from(document.querySelectorAll(selector)).filter(isVisible).at(-1);
+  return direct?.closest('button') || direct || null;
 }
 
-async function cancelSchedule(id) {
-  chrome.alarms.clear(`msgmate_scheduled_${id}`);
-  const { scheduledMessages = [] } = await chrome.storage.local.get('scheduledMessages');
-  const updated = scheduledMessages.filter(m => m.id !== id);
-  await chrome.storage.local.set({ scheduledMessages: updated });
-  return { success: true };
+function isVisible(el) {
+  const rect = el.getBoundingClientRect();
+  const style = window.getComputedStyle(el);
+  return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
 }
