@@ -1,11 +1,11 @@
 import { env } from "@/lib/env";
-
+import {EmptyResponseError,GroqRequestError,GroqRateLimitError,GroqUnauthorizedError,InvalidReplyCountError,InvalidJsonError} from "./aierror"
 type GroqChatResponse = {
-  choices?: Array<{
+  choices?: {
     message?: {
       content?: string;
     };
-  }>;
+  }[];
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
@@ -44,13 +44,26 @@ async function callGroq(prompt: string, maxTokens: number) {
 
   const data = (await response.json()) as GroqChatResponse;
 
-  if (!response.ok || data.error) {
-    throw new Error(data.error?.message ?? `Groq request failed with ${response.status}`);
-  }
+ if (response.status === 401) {
+  throw new GroqUnauthorizedError();
+}
+
+if (response.status === 429) {
+  throw new GroqRateLimitError();
+}
+
+if (!response.ok || data.error) {
+  throw new GroqRequestError(
+    data.error?.message,
+    response.status,
+  );
+}
+
+
 
   const text = data.choices?.[0]?.message?.content;
   if (!text) {
-    throw new Error("Groq returned an empty response");
+    throw new EmptyResponseError();
   }
 
   return {
@@ -72,11 +85,11 @@ Context: ${input.context || "Generate general greeting/opener replies"}
 Return only valid JSON in this exact shape:
 {"replies":["Reply 1","Reply 2","Reply 3"]}`;
 
-  const result = await callGroq(prompt, 500);
+  const result = await callGroq(prompt, 200);
   const parsed = parseJsonObject(result.text) as { replies?: string[] };
 
   if (!Array.isArray(parsed.replies) || parsed.replies.length !== 3) {
-    throw new Error("AI response did not include exactly 3 replies");
+    throw new InvalidReplyCountError();
   }
 
   return {
@@ -96,7 +109,7 @@ function parseJsonObject(text: string) {
   } catch (_error) {
     const match = trimmed.match(/\{[\s\S]*\}/);
     if (!match) {
-      throw new Error("AI response was not valid JSON");
+      throw new InvalidJsonError();
     }
 
     return JSON.parse(match[0]);
@@ -109,7 +122,7 @@ export async function summarizeChat(input: { conversation: string }) {
 Conversation:
 ${input.conversation}`;
 
-  const result = await callGroq(prompt, 500);
+  const result = await callGroq(prompt, 200);
 
   return {
     summary: result.text.trim(),

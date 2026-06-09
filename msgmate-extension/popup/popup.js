@@ -8,12 +8,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   const toggleKey = document.getElementById('toggleKey');
   const assistantButtons = document.querySelectorAll('[data-open-panel]');
 
-  const {
-    backendApiKey = '',
-    backendUrl = 'http://localhost:3000',
-    msgmateUserId,
-    scheduledMessages = []
-  } = await chrome.storage.local.get(['backendApiKey', 'backendUrl', 'msgmateUserId', 'scheduledMessages']);
+ const DEFAULT_BACKEND_URL = 'https://aichat-3-il3q.onrender.com';
+
+const {
+  backendApiKey = '',
+  backendUrl = DEFAULT_BACKEND_URL,
+  msgmateUserId,
+  scheduledMessages = []
+} = await chrome.storage.local.get([
+  'backendApiKey',
+  'backendUrl',
+  'msgmateUserId',
+  'scheduledMessages'
+]);
 
   if (!msgmateUserId) {
     await chrome.storage.local.set({ msgmateUserId: crypto.randomUUID() });

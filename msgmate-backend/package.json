@@ -13,6 +13,7 @@
     "worker": "tsx -r tsconfig-paths/register workers/scheduler.ts"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.4.3",
     "@prisma/client": "^5.22.0",
     "bullmq": "^5.21.2",
     "ioredis": "^5.4.1",

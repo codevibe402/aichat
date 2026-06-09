@@ -1,32 +1,31 @@
-import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { env } from "@/lib/env";
 
-export async function requireApiKey(req: NextRequest) {
-  const apiKey = req.headers.get("x-msgmate-api-key");
+import {prisma} from "./prisma"
+import { auth } from "@clerk/nextjs/server";
 
-  if (!apiKey || apiKey !== env.APP_API_KEY) {
+
+
+
+  
+
+export async function requireUser(req: Request) {
+ 
+const { userId } = await auth();
+
+if (!userId) {
     return null;
   }
 
-  return apiKey;
+  const user = await prisma.user.findUnique({ where: { externalId: userId } });
+ 
+
+  return user;
 }
 
-export async function requireUser(req: NextRequest) {
-  const apiKey = await requireApiKey(req);
-  if (!apiKey) return null;
 
-  const externalId = req.headers.get("x-msgmate-user-id");
-  if (!externalId) return null;
-
+export async function registerUser(externalId: string) {
   return prisma.user.upsert({
     where: { externalId },
     update: {},
-    create: {
-      externalId,
-      settings: {
-        create: {}
-      }
-    }
+    create: { externalId, settings: { create: {} } }
   });
 }

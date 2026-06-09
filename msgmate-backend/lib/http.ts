@@ -1,22 +1,47 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 
-export function json(data: unknown, init?: ResponseInit) {
+function getCorsHeaders(req: Request) : HeadersInit {
+  const origin = req.headers.get("origin");
+
+  if (origin !== env.EXTENSION_ORIGIN) {
+    return {};
+  }
+
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": "content-type,authorization",
+  };
+}
+
+export function json(
+  req: Request,
+  data:unknown,
+  init?: ResponseInit,
+) {
   return NextResponse.json(data, {
     ...init,
     headers: {
-      "Access-Control-Allow-Origin": env.EXTENSION_ORIGIN ?? "*",
-      "Access-Control-Allow-Headers": "content-type,x-msgmate-api-key,x-msgmate-user-id",
-      "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
-      ...init?.headers
-    }
+      ...getCorsHeaders(req),
+      ...init?.headers,
+    },
   });
 }
 
-export function unauthorized() {
-  return json({ error: "Unauthorized" }, { status: 401 });
+export function unauthorized(req: Request) {
+  return json(req, { error: "Unauthorized" }, { status: 401 });
 }
 
-export function options() {
-  return json({ ok: true });
+export function options(req: Request) {
+  const origin = req.headers.get("origin");
+
+  if (origin !== env.EXTENSION_ORIGIN) {
+    return new Response(null, { status: 403 });
+  }
+
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(req),
+  });
 }
