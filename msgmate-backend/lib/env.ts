@@ -6,7 +6,10 @@ const envSchema = z.object({
   AI_PROVIDER: z.enum(["groq"]).default("groq"),
   GROQ_API_KEY: z.string().min(1),
   GROQ_MODEL: z.string().min(1),
-  EXTENSION_ORIGIN: z.string().optional()
+  EXTENSION_ORIGIN: z.string().optional(),
+  RATE_LIMIT_REPLIES: z.string().default("20"),
+  RATE_LIMIT_SUMMARY: z.string().default("10"),
+  RATE_LIMIT_WINDOW_MS: z.string().default("60000")
 });
 
 export const env = envSchema.parse({
@@ -15,5 +18,8 @@ export const env = envSchema.parse({
   AI_PROVIDER: process.env.AI_PROVIDER,
   GROQ_API_KEY: process.env.GROQ_API_KEY,
   GROQ_MODEL: process.env.GROQ_MODEL,
-  EXTENSION_ORIGIN: process.env.EXTENSION_ORIGIN
+  EXTENSION_ORIGIN: process.env.EXTENSION_ORIGIN,
+  RATE_LIMIT_REPLIES: process.env.RATE_LIMIT_REPLIES,
+  RATE_LIMIT_SUMMARY: process.env.RATE_LIMIT_SUMMARY,
+  RATE_LIMIT_WINDOW_MS: process.env.RATE_LIMIT_WINDOW_MS
 });

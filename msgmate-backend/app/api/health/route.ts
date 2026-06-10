@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { redis } from "@/lib/redis";
 import { json, options } from "@/lib/http";
 
-export async function OPTIONS() {
-  return options();
+export async function OPTIONS(req:NextRequest) {
+  return options(req);
 }
 
 export async function GET(_req: NextRequest) {

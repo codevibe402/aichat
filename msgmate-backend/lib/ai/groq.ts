@@ -71,34 +71,60 @@ if (!response.ok || data.error) {
     usage: data.usage
   };
 }
+type ChatMessage = {
+  sender: "me" | "them";
+  text: string;
+};
 
 export async function generateReplies(input: {
   platform?: string;
   tone: string;
-  context?: string;
+  messages: ChatMessage[];
+  replyToMessageId?: string;
+  userGoal?: string;
 }) {
-  const prompt = `You are MsgMate, a messaging assistant. Generate 3 distinct reply options.
-Platform: ${input.platform ?? "unknown"}
+ 
+const prompt = `
+Generate 3 message suggestions as the user.
+
 Tone: ${input.tone}
-Context: ${input.context || "Generate general greeting/opener replies"}
+Platform: ${input.platform ?? "unknown"}
+Goal: ${input.userGoal ?? "not specified"}
 
-Return only valid JSON in this exact shape:
-{"replies":["Reply 1","Reply 2","Reply 3"]}`;
+Messages:
+${JSON.stringify(input.messages)}
 
-  const result = await callGroq(prompt, 200);
-  const parsed = parseJsonObject(result.text) as { replies?: string[] };
+Rules:
+- Generate replies only to the most recent message from "them".
+- Generate follow-up suggestions if the most recent message is from "me".
+- Return exactly 3 suggestions.
+
+Return :
+
+{
+  "type": "reply" | "follow_up",
+  "replies": ["...", "...", "..."]
+}
+`;
+
+
+  const result = await callGroq(prompt, 250);
+  const parsed = parseJsonObject(result.text) as {
+    type ?:"reply"|"followup",
+    replies?: string[] };
 
   if (!Array.isArray(parsed.replies) || parsed.replies.length !== 3) {
     throw new InvalidReplyCountError();
   }
 
   return {
-    replies: parsed.replies,
-    usage: {
-      input_tokens: result.usage?.prompt_tokens,
-      output_tokens: result.usage?.completion_tokens
-    }
-  };
+  type: parsed.type,
+  replies: parsed.replies,
+  usage: {
+    input_tokens: result.usage?.prompt_tokens,
+    output_tokens: result.usage?.completion_tokens
+  }
+};
 }
 
 function parseJsonObject(text: string) {
