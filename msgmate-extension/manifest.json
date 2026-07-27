@@ -10,7 +10,7 @@
     "activeTab",
     "scripting",
     "notifications",
-    "cookies"
+    "identity"
   ],
   "host_permissions": [
     "https://mail.google.com/*",
@@ -24,8 +24,7 @@
     "https://teams.microsoft.com/*",
     "https://chat.google.com/*",
     "http://localhost:3000/*",
-    "https://aichat-9bwl.onrender.com/*",
-    "https://awaited-mutt-93.clerk.accounts.dev/*"
+    "https://aichat-9bwl.onrender.com/*"
   ],
   "background": {
     "service_worker": "background/service_worker.js"

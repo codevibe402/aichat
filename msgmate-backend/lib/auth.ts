@@ -1,26 +1,11 @@
-
-import {prisma} from "./prisma"
-import { auth } from "@clerk/nextjs/server";
-
-
-
-
-  
+import { prisma } from "./prisma"
+import { getSessionUserId } from "./session"
 
 export async function requireUser(req: Request) {
- 
-const { userId } = await auth();
-
-if (!userId) {
-    return null;
-  }
-
-  const user = await prisma.user.findUnique({ where: { externalId: userId } });
- 
-
-  return user;
+  const userId = await getSessionUserId(req)
+  if (!userId) return null
+  return prisma.user.findUnique({ where: { id: userId } })
 }
-
 
 export async function registerUser({
   externalId,

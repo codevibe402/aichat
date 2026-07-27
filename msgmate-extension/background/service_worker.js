@@ -1,32 +1,17 @@
-importScripts('./clerk-bundle.js');
+importScripts('./background-auth.js');
 
 const DEFAULT_BACKEND_URL = 'https://aichat-9bwl.onrender.com';
 const SCHEDULE_ALARM_PREFIX = 'msgmate-schedule-';
 const SCHEDULE_CACHE_KEY = 'msgmate_schedule_cache';
-const TOKEN_CACHE_KEY = 'msgmate_auth_token';
 const AI_CACHE_PREFIX = 'msgmate_ai_cache_';
 
-// ── Auth: cached session/token with expiry ─────────────────────────────────
-async function getCachedToken() {
-  const stored = await chrome.storage.local.get(TOKEN_CACHE_KEY);
-  if (!stored[TOKEN_CACHE_KEY]) return null;
-  const { token, expiresAt } = stored[TOKEN_CACHE_KEY];
-  if (Date.now() < expiresAt - 300000) return token;
+// ── Auth status cache ──────────────────────────────────────────────────────
+let cachedAuthStatus = null;
+let authStatusExpiry = 0;
+
+function getCachedAuthStatus() {
+  if (cachedAuthStatus && Date.now() < authStatusExpiry) return cachedAuthStatus;
   return null;
-}
-
-async function cacheToken(token) {
-  await chrome.storage.local.set({
-    [TOKEN_CACHE_KEY]: { token, expiresAt: Date.now() + 55 * 60 * 1000 }
-  });
-}
-
-async function getValidToken() {
-  const cached = await getCachedToken();
-  if (cached) return cached;
-  const token = await self.MsgMateClerk.getClerkToken();
-  if (token) await cacheToken(token);
-  return token;
 }
 
 // ── AI result cache (chrome.storage.session, cleared on browser restart) ───
@@ -61,15 +46,6 @@ async function setCachedAIResult(key, data) {
   await chrome.storage.session.set({ [key]: data });
 }
 
-// ── Auth status cache ──────────────────────────────────────────────────────
-let cachedAuthStatus = null;
-let authStatusExpiry = 0;
-
-function getCachedAuthStatus() {
-  if (cachedAuthStatus && Date.now() < authStatusExpiry) return cachedAuthStatus;
-  return null;
-}
-
 // ── Start up ───────────────────────────────────────────────────────────────
 chrome.runtime.onInstalled.addListener(() => {});
 
@@ -95,13 +71,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (action === 'getAuthStatus') {
     const cached = getCachedAuthStatus();
     if (cached) { sendResponse(cached); return; }
-    self.MsgMateClerk.getClerkStatus()
-      .then(status => {
-        cachedAuthStatus = status;
-        authStatusExpiry = Date.now() + 60000;
-        sendResponse(status);
-      })
-      .catch(() => sendResponse({ signedIn: false, email: null }));
+    (async () => {
+      try {
+        const status = await self.MsgMateClerk.getClerkStatus();
+        if (status.signedIn) {
+          cachedAuthStatus = status;
+          authStatusExpiry = Date.now() + 60000;
+          sendResponse(status);
+          return;
+        }
+      } catch {}
+      sendResponse({ signedIn: false, email: null });
+    })();
     return true;
   }
 
@@ -454,16 +435,10 @@ function computeNextDueAt(schedules) {
   return pendingTimes.length > 0 ? Math.min(...pendingTimes) : null;
 }
 
-// ── Backend request with cached auth token ─────────────────────────────────
+// ── Backend request with session cookie ────────────────────────────────────
 async function requestBackend(path, options = {}) {
-  const token = await getValidToken();
-  if (!token) {
-    throw new Error('Sign in required. Open the MsgMate popup and sign in.');
-  }
-
   const headers = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
     ...(options.headers || {}),
   };
 
@@ -475,13 +450,14 @@ async function requestBackend(path, options = {}) {
     const response = await fetch(`${DEFAULT_BACKEND_URL}${path}`, {
       ...options,
       headers,
+      credentials: 'include',
     });
     const data = await readJson(response);
 
     if (response.ok) return data;
 
     if (response.status === 401) {
-      chrome.storage.local.remove(TOKEN_CACHE_KEY);
+      chrome.storage.local.remove('msgmate_auth_status');
       throw new Error(data?.error || 'Session expired. Please sign in again.');
     }
 

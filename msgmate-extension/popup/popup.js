@@ -2,15 +2,15 @@
 
 // ── Theme System ─────────────────────────────────────────
 const THEMES = [
-  { id: 'dark',       name: 'Dark',      bg: '#070B1F',    primary: '#7C4DFF',   secondary: '#4F8CFF',  accent: '#00E5FF',  success: '#22C55E', swatch: 'linear-gradient(135deg, #070B1F, #1a1040)' },
-  { id: 'purple',     name: 'Purple',    bg: '#0f0624',    primary: '#A855F7',   secondary: '#7C3AED',  accent: '#C084FC',  success: '#22C55E', swatch: 'linear-gradient(135deg, #2e1065, #581c87)' },
-  { id: 'blue',       name: 'Ocean',     bg: '#061b2e',    primary: '#3B82F6',   secondary: '#06B6D4',  accent: '#22D3EE',  success: '#10B981', swatch: 'linear-gradient(135deg, #164e63, #0c4a6e)' },
-  { id: 'green',      name: 'Forest',    bg: '#052014',    primary: '#22C55E',   secondary: '#10B981',  accent: '#34D399',  success: '#22C55E', swatch: 'linear-gradient(135deg, #064e3b, #065f46)' },
-  { id: 'rose',       name: 'Rose',      bg: '#1f0612',    primary: '#E11D48',   secondary: '#FB7185',  accent: '#FDA4AF',  success: '#22C55E', swatch: 'linear-gradient(135deg, #4c0519, #701a3b)' },
-  { id: 'amber',      name: 'Sunset',    bg: '#1f1306',    primary: '#F59E0B',   secondary: '#FB923C',  accent: '#FBBF24',  success: '#22C55E', swatch: 'linear-gradient(135deg, #78350f, #92400e)' },
-  { id: 'cyan',       name: 'Cyan',      bg: '#061f1f',    primary: '#06B6D4',   secondary: '#22D3EE',  accent: '#67E8F9',  success: '#10B981', swatch: 'linear-gradient(135deg, #164e63, #155e75)' },
-  { id: 'slate',      name: 'Slate',     bg: '#0b1120',    primary: '#6366F1',   secondary: '#818CF8',  accent: '#A5B4FC',  success: '#22C55E', swatch: 'linear-gradient(135deg, #1e293b, #334155)' },
-  { id: 'midnight',   name: 'Midnight',  bg: '#000212',    primary: '#6C5CE7',   secondary: '#2D46B9',  accent: '#00D2D3',  success: '#00B894', swatch: 'linear-gradient(135deg, #000212, #0a0a2e)' },
+  { id: 'light',      name: 'Light',     bg: '#FFFFFF',    primary: '#7C5CFF',   secondary: '#6B4CE6',  accent: '#7C5CFF',  success: '#17B890', swatch: 'linear-gradient(135deg, #FFFFFF, #EFEAFF)' },
+  { id: 'warm',       name: 'Warm',      bg: '#FFFAF5',    primary: '#E85D3A',   secondary: '#D94F2F',  accent: '#F5A623',  success: '#22C55E', swatch: 'linear-gradient(135deg, #FFFAF5, #FEE2D6)' },
+  { id: 'cool',       name: 'Cool',      bg: '#F5FAFF',    primary: '#3B82F6',   secondary: '#2563EB',  accent: '#38BDF8',  success: '#10B981', swatch: 'linear-gradient(135deg, #F5FAFF, #DBEAFE)' },
+  { id: 'sage',       name: 'Sage',      bg: '#F5FBF7',    primary: '#22C55E',   secondary: '#16A34A',  accent: '#34D399',  success: '#22C55E', swatch: 'linear-gradient(135deg, #F5FBF7, #DCFCE7)' },
+  { id: 'rose',       name: 'Rose',      bg: '#FFF5F7',    primary: '#E11D48',   secondary: '#BE123C',  accent: '#FB7185',  success: '#22C55E', swatch: 'linear-gradient(135deg, #FFF5F7, #FFE4E6)' },
+  { id: 'amber',      name: 'Sunset',    bg: '#FFFBF0',    primary: '#F59E0B',   secondary: '#D97706',  accent: '#FBBF24',  success: '#22C55E', swatch: 'linear-gradient(135deg, #FFFBF0, #FEF3C7)' },
+  { id: 'sky',        name: 'Sky',       bg: '#F0F9FF',    primary: '#06B6D4',   secondary: '#0891B2',  accent: '#67E8F9',  success: '#10B981', swatch: 'linear-gradient(135deg, #F0F9FF, #CFFAFE)' },
+  { id: 'slate',      name: 'Slate',     bg: '#F8FAFC',    primary: '#6366F1',   secondary: '#4F46E5',  accent: '#A5B4FC',  success: '#22C55E', swatch: 'linear-gradient(135deg, #F8FAFC, #E0E7FF)' },
+  { id: 'midnight',   name: 'Midnight',  bg: '#F2F0FF',    primary: '#6C5CE7',   secondary: '#5B4BD6',  accent: '#7C83FF',  success: '#00B894', swatch: 'linear-gradient(135deg, #F2F0FF, #E0DBFF)' },
 ];
 
 function applyTheme(themeId) {
@@ -250,34 +250,30 @@ document.addEventListener('DOMContentLoaded', async () => {
       authDot.className = 'status-dot inactive';
     }
   } catch (err) {
-    console.warn('[ReplyGenie] Clerk status check failed:', err);
+    console.warn('[ReplyGenie] Auth status check failed:', err);
     authStatusText.textContent = 'Could not check sign-in status';
     signInBtn.classList.add('visible');
     authDot.className = 'status-dot loading';
   }
 
-  // ── Extension Status ──
-  const extDot = document.getElementById('ext-dot');
-  const statusText = document.getElementById('status-text');
-
+  // ── Scheduled count ──
   try {
     const scheduledMessages = await chrome.runtime.sendMessage({ action: 'getScheduled' }) || [];
     const pending = scheduledMessages.filter(m => m.status === 'PENDING').length;
     const sent = scheduledMessages.filter(m => m.status === 'SENT').length;
     document.getElementById('stat-scheduled').textContent = pending;
     document.getElementById('stat-sent').textContent = sent;
-    extDot.className = 'status-dot active';
-    statusText.textContent = 'Extension active on supported platforms';
-  } catch (e) {
-    extDot.className = 'status-dot loading';
-    statusText.textContent = 'Checking extension status...';
-  }
+  } catch (e) {}
 
   // ── Assistant Buttons ──
   assistantButtons.forEach((button) => {
     button.addEventListener('click', async () => {
       const tabName = button.dataset.openPanel;
-      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      let activeTab;
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        activeTab = tabs[0];
+      } catch { activeTab = null; }
 
       if (!activeTab?.id) return showToast('Open a supported platform tab first');
 
@@ -297,7 +293,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const debugBtn = document.getElementById('debugReadChat');
   if (debugBtn) {
     debugBtn.addEventListener('click', async () => {
-      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      let activeTab;
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        activeTab = tabs[0];
+      } catch { activeTab = null; }
       if (!activeTab?.id) return showToast('Open a supported platform tab first');
 
       try {

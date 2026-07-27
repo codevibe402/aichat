@@ -39,27 +39,35 @@
   }
 
   :root {
-    --bg: #070B1F;
-    --bg-secondary: #0a0f2e;
-    --primary: #7C4DFF;
-    --secondary: #4F8CFF;
-    --accent: #00E5FF;
-    --success: #22C55E;
+    --bg: #FFFFFF;
+    --bg-secondary: #F4F2FB;
+    --primary: #7C5CFF;
+    --secondary: #6B4CE6;
+    --accent: #7C5CFF;
+    --success: #17B890;
     --warning: #F59E0B;
-    --danger: #EF4444;
-    --card-bg: rgba(255,255,255,0.04);
-    --card-border: rgba(255,255,255,0.07);
-    --card-hover-bg: rgba(255,255,255,0.06);
-    --card-hover-border: rgba(255,255,255,0.10);
-    --text-primary: #ffffff;
-    --text-secondary: #e2e8f0;
-    --text-muted: rgba(255,255,255,0.35);
-    --text-faint: rgba(255,255,255,0.15);
-    --glass-highlight: rgba(255,255,255,0.10);
-    --header-glow-1: rgba(124,77,255,0.15);
-    --header-glow-2: rgba(0,229,255,0.08);
+    --danger: #D14343;
+    --card-bg: #F4F2FB;
+    --card-border: #E7E4F0;
+    --card-hover-bg: #EFEAFF;
+    --card-hover-border: rgba(124,92,255,0.15);
+    --text-primary: #17151F;
+    --text-secondary: #2C2A38;
+    --text-muted: #6E6B7C;
+    --text-faint: #A7A3B8;
+    --glass-highlight: rgba(124,92,255,0.08);
+    --header-glow-1: rgba(124,92,255,0.10);
+    --header-glow-2: rgba(124,92,255,0.06);
     --stat-gradient: linear-gradient(135deg, var(--primary), var(--secondary));
     --btn-gradient: linear-gradient(135deg, var(--primary), var(--secondary));
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-pill: 999px;
+    --shadow-sm: 0 1px 3px rgba(23,21,31,0.06);
+    --shadow-md: 0 4px 12px rgba(23,21,31,0.08);
+    --shadow-lg: 0 8px 24px rgba(23,21,31,0.10);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -745,76 +753,76 @@
   }
 
   :root {
-    --bg: #f5f7fb;
-    --bg-secondary: #eef4ff;
-    --primary: #0058bd;
-    --secondary: #851ad8;
-    --accent: #4f8cff;
-    --success: #159b4c;
-    --warning: #b35e00;
-    --danger: #b42318;
-    --card-bg: rgba(255, 255, 255, 0.96);
-    --card-border: rgba(15, 23, 42, 0.08);
-    --card-hover-bg: #ffffff;
-    --card-hover-border: rgba(0, 88, 189, 0.16);
-    --text-primary: #0f172a;
-    --text-secondary: #334155;
-    --text-muted: #64748b;
-    --text-faint: #94a3b8;
-    --glass-highlight: rgba(0, 88, 189, 0.16);
-    --header-glow-1: rgba(0, 88, 189, 0.10);
-    --header-glow-2: rgba(133, 26, 216, 0.08);
+    --bg: #FFFFFF;
+    --bg-secondary: #F4F2FB;
+    --primary: #7C5CFF;
+    --secondary: #6B4CE6;
+    --accent: #7C5CFF;
+    --success: #17B890;
+    --warning: #F59E0B;
+    --danger: #D14343;
+    --card-bg: #F4F2FB;
+    --card-border: #E7E4F0;
+    --card-hover-bg: #EFEAFF;
+    --card-hover-border: rgba(124,92,255,0.15);
+    --text-primary: #17151F;
+    --text-secondary: #2C2A38;
+    --text-muted: #6E6B7C;
+    --text-faint: #A7A3B8;
+    --glass-highlight: rgba(124,92,255,0.08);
+    --header-glow-1: rgba(124,92,255,0.10);
+    --header-glow-2: rgba(124,92,255,0.06);
     --stat-gradient: linear-gradient(135deg, var(--primary), var(--secondary));
     --btn-gradient: linear-gradient(135deg, var(--primary), var(--secondary));
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-pill: 999px;
+    --shadow-sm: 0 1px 3px rgba(23,21,31,0.06);
+    --shadow-md: 0 4px 12px rgba(23,21,31,0.08);
+    --shadow-lg: 0 8px 24px rgba(23,21,31,0.10);
   }
 
   body {
-    background: linear-gradient(180deg, #f8fbff 0%, #f4f7fb 100%);
+    background: var(--bg);
     color: var(--text-secondary);
   }
 
   .header {
     padding: 18px 16px 14px;
-    background: linear-gradient(135deg, #eff6ff 0%, #f7f0ff 100%);
-    border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--card-border);
   }
 
-  .header-inner {
-    gap: 10px;
-  }
+  .header-inner { gap: 10px; }
 
   .logo-icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
-    box-shadow: 0 6px 18px rgba(0, 88, 189, 0.14);
+    width: 34px; height: 34px;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 6px 18px rgba(124,92,255,0.14);
   }
 
-  .logo-text {
-    color: var(--text-primary);
-  }
-
-  .logo-sub {
-    color: var(--text-muted);
-  }
+  .logo-text { color: var(--text-primary); }
+  .logo-sub { color: var(--text-muted); }
 
   .header-badge {
-    background: rgba(0, 88, 189, 0.08);
-    border-color: rgba(0, 88, 189, 0.12);
+    background: var(--card-bg);
+    border-color: var(--card-border);
     color: var(--primary);
   }
 
   .sparkle-btn {
-    background: #ffffff;
-    border-color: #dbeafe;
+    background: var(--bg);
+    border-color: var(--card-border);
     color: var(--primary);
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    box-shadow: var(--shadow-sm);
     animation: none;
   }
 
   .sparkle-btn:hover {
-    background: #f8fbff;
-    border-color: #bedbff;
+    background: var(--card-hover-bg);
+    border-color: var(--card-hover-border);
     transform: translateY(-1px);
   }
 
@@ -824,14 +832,14 @@
   }
 
   .glass-card {
-    background: var(--card-bg);
+    background: var(--bg);
     border: 1px solid var(--card-border);
-    border-radius: 18px;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
   }
 
   .glass-card:hover {
-    background: var(--card-hover-bg);
+    background: var(--bg);
     border-color: var(--card-hover-border);
     transform: translateY(-1px);
   }
@@ -841,79 +849,66 @@
     margin-bottom: 7px;
   }
 
-  .section-title .dot {
-    background: var(--primary);
-  }
+  .section-title .dot { background: var(--primary); }
 
-  .status-text {
-    color: var(--text-muted);
-  }
+  .status-text { color: var(--text-muted); }
 
   .btn {
     min-height: 44px;
-    border-radius: 14px;
+    border-radius: var(--radius-md);
     box-shadow: none;
   }
 
   .btn-primary {
     background: var(--btn-gradient);
     color: #ffffff;
-    box-shadow: 0 6px 16px rgba(0, 88, 189, 0.16);
+    box-shadow: 0 6px 16px rgba(124,92,255,0.20);
   }
 
   .btn-secondary {
-    background: #f8fbff;
-    border-color: #dbeafe;
-    color: #334155;
-    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+    background: var(--bg);
+    border-color: var(--card-border);
+    color: var(--text-secondary);
+    box-shadow: var(--shadow-sm);
   }
 
-  .assistant-grid {
-    gap: 8px;
-  }
+  .assistant-grid { gap: 8px; }
 
   .assistant-btn {
-    background: #f8fbff;
-    border: 1px solid #e5eefc;
-    border-radius: 14px;
+    background: var(--bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
     padding: 10px 11px;
-    color: #334155;
+    color: var(--text-secondary);
   }
 
   .assistant-btn:hover {
-    background: #ffffff;
-    border-color: #dbeafe;
+    background: var(--bg);
+    border-color: var(--card-hover-border);
     transform: translateY(-1px);
   }
 
-  .assistant-btn-title {
-    color: var(--text-primary);
-  }
-
-  .assistant-btn-desc {
-    color: var(--text-muted);
-  }
+  .assistant-btn-title { color: var(--text-primary); }
+  .assistant-btn-desc { color: var(--text-muted); }
 
   .assistant-btn-shortcut {
     color: var(--primary);
-    background: #eef6ff;
-    border-color: #dbeafe;
+    background: var(--card-bg);
+    border-color: var(--card-border);
   }
 
-  .stats-grid {
-    gap: 8px;
-  }
+  .stats-grid { gap: 8px; }
 
   .stat-item {
-    background: #f8fbff;
-    border: 1px solid #e7eef8;
-    border-radius: 12px;
+    background: var(--bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
     padding: 10px 6px;
   }
 
   .stat-item:hover {
-    background: #f2f7ff;
-    border-color: #dbeafe;
+    background: var(--card-hover-bg);
+    border-color: var(--card-hover-border);
   }
 
   .stat-num {
@@ -922,72 +917,57 @@
     -webkit-text-fill-color: initial;
   }
 
-  .stat-label {
-    color: var(--text-muted);
-  }
+  .stat-label { color: var(--text-muted); }
 
   .platform-chip {
-    background: #f8fbff;
-    border: 1px solid #e7eef8;
-    border-radius: 12px;
+    background: var(--bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
     color: var(--text-muted);
     padding: 8px 4px;
   }
 
   .platform-chip.active {
-    background: #eef6ff;
-    border-color: #dbeafe;
+    background: var(--card-bg);
+    border-color: var(--card-hover-border);
     color: var(--primary);
   }
 
-  .how-to {
-    padding: 8px 0 0;
-  }
-
-  .how-to-step {
-    gap: 10px;
-    padding: 4px 0;
-  }
+  .how-to { padding: 8px 0 0; }
+  .how-to-step { gap: 10px; padding: 4px 0; }
 
   .how-to-step-num {
-    background: #eef6ff;
-    border-color: #dbeafe;
+    background: var(--card-bg);
+    border-color: var(--card-border);
     color: var(--primary);
   }
 
-  .how-to-step-text {
-    color: var(--text-muted);
-  }
-
-  .how-to-step-text strong {
-    color: #334155;
-  }
+  .how-to-step-text { color: var(--text-muted); }
+  .how-to-step-text strong { color: var(--text-secondary); }
 
   .theme-toggle-btn {
-    background: #f8fbff;
-    border-color: #dbeafe;
-    color: #475569;
+    background: var(--bg);
+    border-color: var(--card-border);
+    color: var(--text-muted);
     min-height: 44px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
   }
 
   .theme-toggle-btn:hover {
-    background: #f2f7ff;
-    border-color: #bedbff;
+    background: var(--card-hover-bg);
+    border-color: var(--card-hover-border);
     color: var(--primary);
   }
 
   .theme-picker {
-    background: #f8fbff;
-    border-color: #e5eefc;
+    background: var(--bg);
+    border-color: var(--card-border);
   }
 
-  .theme-option:hover {
-    background: #ffffff;
-  }
+  .theme-option:hover { background: var(--card-bg); }
 
   .theme-option.active {
-    background: #eef6ff;
+    background: var(--card-bg);
     border-color: var(--primary);
   }
 
@@ -1010,7 +990,7 @@
     align-items: center;
     gap: 3px;
     padding: 6px 2px;
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     border: 1.5px solid transparent;
     background: transparent;
     cursor: pointer;
@@ -1020,13 +1000,13 @@
   }
 
   .theme-option:hover {
-    background: rgba(255,255,255,0.04);
+    background: var(--card-bg);
     transform: translateY(-2px);
   }
 
   .theme-option.active {
     border-color: var(--primary);
-    background: color-mix(in srgb, var(--primary) 8%, transparent);
+    background: var(--card-hover-bg);
   }
 
   .theme-option.active::after {
@@ -1046,8 +1026,8 @@
 
   .theme-swatch {
     width: 24px; height: 24px;
-    border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--card-border);
     animation: theme-pop 0.3s ease backwards;
   }
 
@@ -1063,13 +1043,11 @@
 
   .theme-name {
     font-size: 7px;
-    color: rgba(255,255,255,0.3);
+    color: var(--text-faint);
     letter-spacing: 0.02em;
   }
 
-  .theme-option.active .theme-name {
-    color: rgba(255,255,255,0.5);
-  }
+  .theme-option.active .theme-name { color: var(--text-muted); }
 
   /* ── Toast ─────────────────────────────────────────── */
   .toast {
@@ -1139,10 +1117,10 @@
         <div class="status-dot active" id="auth-dot"></div>
         <span class="status-text" id="auth-status-text">Checking sign-in status...</span>
       </div>
-      <p class="helper-text">Sign in to unlock AI replies, scheduling, and summaries from the conversations you already have open.</p>
+      <p class="helper-text">Sign in with Google to unlock AI replies, scheduling, and summaries.</p>
       <button class="btn btn-primary" id="signInBtn" style="margin-top:8px">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-        Sign in to MsgMate
+        Sign in with Google
       </button>
     </div>
   </div>
@@ -1323,7 +1301,7 @@
   </span>
 </div>
 
-<script src="clerk-bundle.js"></script>
+<script src="popup-auth.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>

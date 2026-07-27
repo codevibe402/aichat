@@ -11,7 +11,7 @@ function getCorsHeaders(req: Request) : HeadersInit {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "content-type,authorization",
+    "Access-Control-Allow-Headers": "content-type",
     "Access-Control-Allow-Credentials": "true",
   };
 }
