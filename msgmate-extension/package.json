@@ -1,0 +1,19 @@
+{
+  "name": "msgmate-extension",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build tooling for the MsgMate Chrome extension's Clerk auth bundles.",
+  "scripts": {
+    "build": "npm run build:background && npm run build:popup",
+    "build:background": "esbuild src/background-auth.js --bundle --minify --format=iife --platform=browser --outfile=background/clerk-bundle.js",
+    "build:popup": "esbuild src/popup-auth.js --bundle --minify --format=iife --platform=browser --outfile=popup/clerk-bundle.js",
+    "watch": "npm run build:background -- --watch & npm run build:popup -- --watch"
+  },
+  "dependencies": {
+    "@clerk/chrome-extension": "^3.1.18",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

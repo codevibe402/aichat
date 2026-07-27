@@ -22,10 +22,18 @@ if (!userId) {
 }
 
 
-export async function registerUser(externalId: string) {
+export async function registerUser({
+  externalId,
+  email,
+  name
+}: {
+  externalId: string;
+  email?: string | null;
+  name?: string | null;
+}) {
   return prisma.user.upsert({
     where: { externalId },
-    update: {},
-    create: { externalId, settings: { create: {} } }
+    update: { email: email ?? undefined, name: name ?? undefined },
+    create: { externalId, email: email ?? undefined, name: name ?? undefined, settings: { create: {} } }
   });
 }

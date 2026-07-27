@@ -78,7 +78,7 @@
   chrome.runtime.onMessage.addListener((req, _sender, sendResponse) => {
     if (req.action !== 'openMsgmatePanel') return;
 
-    if (req.tab && ['ai', 'schedule', 'summary'].includes(req.tab)) {
+    if (req.tab && ['ai', 'schedule', 'summary', 'important'].includes(req.tab)) {
       activeTab = req.tab;
       renderActiveTab();
     }
@@ -117,6 +117,15 @@
     // Schedule message
     if (e.target.id === 'msgmate-schedule-btn') scheduleMessage();
 
+    // Mark as Important
+    if (e.target.id === 'msgmate-mark-important-btn' || e.target.closest('#msgmate-quick-important')) {
+      markAsImportant();
+    }
+
+    // Dismiss important
+    const dismissBtn = e.target.closest('.msgmate-important-dismiss');
+    if (dismissBtn) dismissImportant(dismissBtn.dataset.id);
+
     // Cancel scheduled
     const cancelBtn = e.target.closest('.msgmate-cancel-btn');
     if (cancelBtn) cancelScheduled(cancelBtn.dataset.id);
@@ -132,10 +141,16 @@
         </svg>
         MsgMate
       </div>
-      <span class="msgmate-platform-badge">${platformName}</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="msgmate-important-btn" id="msgmate-quick-important" title="Mark as important">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </button>
+        <span class="msgmate-platform-badge">${platformName}</span>
+      </div>
     </div>
     <div class="msgmate-tabs">
       <button class="msgmate-tab active" data-tab="ai">✨ AI Reply</button>
+      <button class="msgmate-tab" data-tab="important">⭐ Important</button>
       <button class="msgmate-tab" data-tab="schedule">⏰ Schedule</button>
       <button class="msgmate-tab" data-tab="summary">📋 Summary</button>
     </div>
@@ -151,18 +166,20 @@
     document.getElementById('msgmate-body').innerHTML = renderTabContent(activeTab);
     if (activeTab === 'ai') hydrateAutoContext();
     if (activeTab === 'summary') hydrateAutoSummary();
+    if (activeTab === 'important') loadImportantList();
     if (activeTab === 'schedule') loadScheduled();
   }
 
   function refreshActiveTabData() {
     if (activeTab === 'ai') {
-      hydrateAutoContext({ force: true });
-      setTimeout(() => hydrateAutoContext({ force: true }), 500);
-      setTimeout(() => hydrateAutoContext({ force: true }), 1200);
+      setTimeout(() => hydrateAutoContext({ force: true }), 400);
     }
     if (activeTab === 'summary') {
-      hydrateAutoSummary({ force: true });
-      setTimeout(() => hydrateAutoSummary({ force: true }), 500);
+      setTimeout(() => hydrateAutoSummary({ force: true }), 400);
+    }
+    if (activeTab === 'important') {
+      setTimeout(() => hydrateImportantContext({ force: true }), 400);
+      loadImportantList();
     }
     if (activeTab === 'schedule') loadScheduled();
   }
@@ -184,6 +201,20 @@
       </div>
       <button class="msgmate-btn msgmate-btn-primary" id="msgmate-generate-btn">✨ Generate Replies</button>
       <div id="msgmate-suggestions-area"></div>`;
+
+    if (tab === 'important') return `
+      <div class="msgmate-section">
+        <div class="msgmate-label">Current conversation</div>
+        <textarea class="msgmate-textarea" id="msgmate-important-context" rows="3"
+          placeholder="Open a conversation and click the star to mark it important..."></textarea>
+        <button class="msgmate-btn msgmate-btn-primary" id="msgmate-mark-important-btn" style="margin-top:8px">
+          ⭐ Mark as Important
+        </button>
+      </div>
+      <div class="msgmate-section">
+        <div class="msgmate-label">Saved important messages</div>
+        <div id="msgmate-important-list"><div class="msgmate-empty">Loading...</div></div>
+      </div>`;
 
     if (tab === 'schedule') return `
       <div class="msgmate-section">
@@ -221,6 +252,27 @@
     return '';
   }
 
+  // ── Auth gate ─────────────────────────────────────────────────────────────
+  // Cheap local check (background worker just reads its in-memory Clerk
+  // session — no network call) so we never even attempt a backend action
+  // while signed out, and can show a clear prompt instead of a fetch error.
+  async function isSignedIn() {
+    try {
+      const status = await chrome.runtime.sendMessage({ action: 'getAuthStatus' });
+      return Boolean(status?.signedIn);
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function showSignInRequired(container) {
+    if (!container) return;
+    container.innerHTML = `
+      <div class="msgmate-summary-box" style="color:#f87171;margin-top:10px">
+        🔑 Sign-in required. Open the MsgMate popup and sign in.
+      </div>`;
+  }
+
   // ── AI Reply Generation ───────────────────────────────────────────────────
   function hydrateAutoContext(options = {}) {
     const contextEl = document.getElementById('msgmate-context');
@@ -245,10 +297,48 @@
   }
 
   async function generateAIReply() {
-    hydrateAutoContext();
-    const context = document.getElementById('msgmate-context')?.value || '';
     const area = document.getElementById('msgmate-suggestions-area');
     if (!area) return;
+
+    if (!(await isSignedIn())) return showSignInRequired(area);
+
+    area.innerHTML = `<div class="msgmate-spinner">
+      <div class="msgmate-dot-pulse"><span></span><span></span><span></span></div>
+      Reading chat...
+    </div>`;
+
+    // ── Step 1: ask content.js for structured messages ──────────────────────
+    // content.js runs in the same tab and returns { platform, messages[] }.
+    // We prefer this structured array over the raw text blob because it lets
+    // the backend clearly tell "me" from "them", improving reply quality.
+    // If content.js isn't loaded yet (e.g. extension just installed), we fall
+    // back gracefully to whatever is in the context textarea.
+    let structuredMessages = [];
+    try {
+      const chatData = await chrome.runtime.sendMessage({ action: 'READ_CHAT' });
+      structuredMessages = chatData?.messages ?? [];
+    } catch (_) {
+      // content.js not available on this tab — fall back to textarea text below
+    }
+
+    // ── Step 2: also keep the textarea context as a human-readable fallback ─
+    // If the structured reader returned nothing, use whatever text the user
+    // (or the auto-hydrate) put in the context box.
+    hydrateAutoContext();
+    const fallbackContext = document.getElementById('msgmate-context')?.value || '';
+
+    // If we got structured messages, show them in the textarea so the user can
+    // verify what the AI will receive — this is the in-UI debug view.
+    if (structuredMessages.length > 0) {
+      const contextEl = document.getElementById('msgmate-context');
+      if (contextEl) {
+        const preview = structuredMessages
+          .map(m => `[${m.sender === 'me' ? 'Me' : 'Them'}] ${m.text}`)
+          .join('\n');
+        contextEl.value = preview;
+        contextEl.rows = Math.min(10, Math.max(3, structuredMessages.length + 1));
+      }
+    }
 
     area.innerHTML = `<div class="msgmate-spinner">
       <div class="msgmate-dot-pulse"><span></span><span></span><span></span></div>
@@ -261,7 +351,10 @@
         data: {
           platform: currentPlatform,
           tone: selectedTone,
-          context
+          // Send structured messages when available; background worker should
+          // prefer `messages` over `context` if both are present.
+          messages: structuredMessages.length > 0 ? structuredMessages : undefined,
+          context: structuredMessages.length === 0 ? fallbackContext : undefined,
         }
       });
 
@@ -271,13 +364,13 @@
       area.innerHTML = `
         <div class="msgmate-label" style="margin-top:10px">Suggestions — click to use</div>
         <div class="msgmate-suggestions">
-          ${replies.map(r => `<button class="msgmate-suggestion-chip">${r}</button>`).join('')}
+          ${replies.map(r => `<button class="msgmate-suggestion-chip">${escHtml(r)}</button>`).join('')}
         </div>`;
     } catch (err) {
       area.innerHTML = `
         <div class="msgmate-summary-box" style="color:#f87171;margin-top:10px">
-          ${err.message.includes('Unauthorized') || err.message.includes('API key')
-            ? '🔑 Backend key missing or invalid. Set it in the extension popup.'
+          ${err.message.includes('Sign in') || err.message.includes('Unauthorized')
+            ? '🔑 Sign-in required. Open the MsgMate popup and sign in.'
             : '⚠️ Error: ' + err.message}
         </div>`;
     }
@@ -288,6 +381,8 @@
     const chatText = document.getElementById('msgmate-chat-input')?.value || '';
     const result = document.getElementById('msgmate-summary-result');
     if (!result || !chatText.trim()) return;
+
+    if (!(await isSignedIn())) return showSignInRequired(result);
 
     result.innerHTML = `<div class="msgmate-spinner" style="margin-top:8px">
       <div class="msgmate-dot-pulse"><span></span><span></span><span></span></div>
@@ -305,7 +400,7 @@
       if (data.error) throw new Error(data.error);
       const summary = data.summary;
 
-      result.innerHTML = `<div class="msgmate-summary-box" style="margin-top:10px">${summary.replace(/\n/g,'<br>')}</div>`;
+      result.innerHTML = `<div class="msgmate-summary-box" style="margin-top:10px">${escHtml(summary).replace(/\n/g,'<br>')}</div>`;
     } catch (err) {
       result.innerHTML = `<div class="msgmate-summary-box" style="color:#f87171;margin-top:10px">⚠️ ${err.message}</div>`;
     }
@@ -323,6 +418,8 @@
 
     const sendAt = new Date(`${date}T${time}`).getTime();
     if (sendAt <= Date.now()) return showToast('Please choose a future time');
+
+    if (!(await isSignedIn())) return showToast('🔑 Sign in required. Open the MsgMate popup and sign in.');
 
     const response = await chrome.runtime.sendMessage({
       action: 'scheduleMessage',
@@ -362,7 +459,7 @@
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
             <span class="msgmate-schedule-status ${m.status}">${m.status}</span>
-            ${m.status === 'pending' ? `<button class="msgmate-cancel-btn" data-id="${m.id}" title="Cancel">✕</button>` : ''}
+            ${m.status === 'PENDING' ? `<button class="msgmate-cancel-btn" data-id="${m.id}" title="Cancel">✕</button>` : ''}
           </div>
         </div>`).join('');
   }
@@ -496,7 +593,7 @@
       return [
         subject ? `Subject: ${subject}` : '',
         sender ? `From: ${sender}` : '',
-        messageBodies.slice(-3).join('\n\n---\n\n')
+        messageBodies.slice(-10).join('\n\n---\n\n')
       ].filter(Boolean).join('\n\n');
     }
 
@@ -514,7 +611,7 @@
       .map(el => el.innerText)
       .filter(Boolean);
 
-    return messages.slice(-20).join('\n\n');
+    return messages.slice(-10).join('\n\n');
   }
 
   function extractWhatsAppContext() {
@@ -536,7 +633,7 @@
 
     return [
       chatTitle ? `Chat: ${chatTitle}` : '',
-      messages.slice(-30).join('\n')
+      messages.slice(-10).join('\n')
     ].filter(Boolean).join('\n\n');
   }
 
@@ -546,7 +643,7 @@
       .map(el => el.innerText)
       .filter(text => text && text.length > 15 && text.length < 1500);
 
-    return candidates.slice(-20).join('\n\n');
+    return candidates.slice(-10).join('\n\n');
   }
 
   function cleanExtractedText(text) {
@@ -579,7 +676,7 @@
       .map(text => text.trim())
       .filter(text => text.length > 20 && text.length < 2000)
       .filter((text, index, list) => list.indexOf(text) === index)
-      .slice(-30)
+      .slice(-10)
       .join('\n');
   }
 
@@ -614,5 +711,92 @@
 
   function escHtml(s) {
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Important Messages ──────────────────────────────────────────────────────
+  function hydrateImportantContext(options = {}) {
+    const el = document.getElementById('msgmate-important-context');
+    if (!el || (el.value.trim() && !options.force)) return;
+    const context = extractConversationContext();
+    if (context) {
+      el.value = context;
+      el.rows = Math.min(8, Math.max(3, context.split('\n').length));
+    }
+  }
+
+  async function markAsImportant() {
+    const context = document.getElementById('msgmate-important-context')?.value?.trim() || extractConversationContext();
+    if (!context) return showToast('Open a conversation first');
+
+    if (!(await isSignedIn())) return showToast('🔑 Sign in required. Open the MsgMate popup and sign in.');
+
+    const senderName = document.querySelector('h2.hP')?.innerText ||
+      document.querySelector('.gD, .go')?.innerText ||
+      document.querySelector('header span[title]')?.getAttribute('title') ||
+      platformName;
+
+    try {
+      const result = await chrome.runtime.sendMessage({
+        action: 'saveImportant',
+        data: {
+          platform: currentPlatform,
+          senderName: senderName,
+          subject: document.querySelector('h2.hP')?.innerText || '',
+          preview: context.slice(0, 500),
+          url: location.href,
+          urgency: 'MEDIUM'
+        }
+      });
+
+      if (result?.message || result?.id) {
+        showToast('⭐ Marked as important!');
+        if (activeTab === 'important') loadImportantList();
+      } else {
+        showToast(result?.error || 'Could not save');
+      }
+    } catch (err) {
+      showToast('Error: ' + err.message);
+    }
+  }
+
+  async function loadImportantList() {
+    const listEl = document.getElementById('msgmate-important-list');
+    if (!listEl) return;
+
+    if (!(await isSignedIn())) {
+      listEl.innerHTML = `<div class="msgmate-empty">🔑 Sign in to see important messages</div>`;
+      return;
+    }
+
+    try {
+      const messages = await chrome.runtime.sendMessage({ action: 'getImportant' }) || [];
+      if (messages.length === 0) {
+        listEl.innerHTML = `<div class="msgmate-empty">No important messages yet</div>`;
+        return;
+      }
+      listEl.innerHTML = messages.map(m => `
+        <div class="msgmate-important-item">
+          <div class="msgmate-important-item-info">
+            <div class="msgmate-important-item-sender">${escHtml(m.senderName || m.platform)}</div>
+            <div class="msgmate-important-item-preview">${escHtml((m.preview || '').slice(0, 120))}</div>
+            <div class="msgmate-important-item-meta">
+              ${escHtml(PLATFORM_NAMES[m.platform] || m.platform)}
+              ${m.subject ? ' · ' + escHtml(m.subject) : ''}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+            <span class="msgmate-schedule-status ${m.urgency}">${m.urgency}</span>
+            <button class="msgmate-important-dismiss" data-id="${m.id}" title="Dismiss">✕</button>
+          </div>
+        </div>`).join('');
+    } catch {
+      listEl.innerHTML = `<div class="msgmate-empty">Could not load</div>`;
+    }
+  }
+
+  async function dismissImportant(id) {
+    if (!id) return;
+    await chrome.runtime.sendMessage({ action: 'markImportantRead', id });
+    loadImportantList();
   }
 })();

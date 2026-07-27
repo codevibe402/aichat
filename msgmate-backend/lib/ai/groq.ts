@@ -32,7 +32,7 @@ async function callGroq(prompt: string, maxTokens: number) {
       messages: [
         {
           role: "system",
-          content: "Return only valid JSON. Do not include markdown, code fences, or extra commentary."
+          content: "Valid JSON only. Concise, polite replies."
         },
         {
           role: "user",
@@ -84,33 +84,17 @@ export async function generateReplies(input: {
   userGoal?: string;
 }) {
  
-const prompt = `
-Generate 3 message suggestions as the user.
-
-Tone: ${input.tone}
+const prompt = `Generate 3 ${input.tone} replies as the user.
 Platform: ${input.platform ?? "unknown"}
 Goal: ${input.userGoal ?? "not specified"}
-
-Messages:
-${JSON.stringify(input.messages)}
-
-Rules:
-- Generate replies only to the most recent message from "them".
-- Generate follow-up suggestions if the most recent message is from "me".
-- Return exactly 3 suggestions.
-
-Return :
-
-{
-  "type": "reply" | "follow_up",
-  "replies": ["...", "...", "..."]
-}
-`;
+Messages: ${JSON.stringify(input.messages)}
+Latest from "them" → type "reply"; from "me" → type "follow_up".
+Return {"type":"reply"|"follow_up","replies":["...","...","..."]}`;
 
 
   const result = await callGroq(prompt, 250);
   const parsed = parseJsonObject(result.text) as {
-    type ?:"reply"|"followup",
+    type ?:"reply"|"follow_up",
     replies?: string[] };
 
   if (!Array.isArray(parsed.replies) || parsed.replies.length !== 3) {
@@ -143,9 +127,8 @@ function parseJsonObject(text: string) {
 }
 
 export async function summarizeChat(input: { conversation: string }) {
-  const prompt = `Summarize this conversation in 3-5 concise bullet points. Capture key decisions, action items, and sentiment.
+  const prompt = `Summarize in 3-5 bullet points. Key decisions, action items, sentiment.
 
-Conversation:
 ${input.conversation}`;
 
   const result = await callGroq(prompt, 200);

@@ -16,13 +16,13 @@ const statusSchema = z.object({
   error: z.string().max(1000).optional()
 });
 
-export async function OPTIONS() {
-  return options();
+export async function OPTIONS(req: NextRequest) {
+  return options(req);
 }
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const user = await requireUser(req);
-  if (!user) return unauthorized();
+  if (!user) return unauthorized(req);
 
   const { id } = await context.params;
   const body = statusSchema.parse(await req.json());
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   });
 
   if (!schedule) {
-    return json({ error: "Schedule not found" }, { status: 404 });
+    return json(req, { error: "Schedule not found" }, { status: 404 });
   }
 
   const updated = await prisma.scheduledMessage.update({
@@ -47,5 +47,5 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     }
   });
 
-  return json({ schedule: updated });
+  return json(req, { schedule: updated });
 }

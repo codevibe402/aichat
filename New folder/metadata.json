@@ -1,0 +1,6 @@
+{
+  "name": "AI Assistant",
+  "description": "Personal AI Assistant with prioritized messages, memory context, action center, and intelligent writing helper powered by Gemini.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

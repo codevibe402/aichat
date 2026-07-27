@@ -12,13 +12,13 @@ const createSchema = z.object({
   sendAt: z.string().datetime()
 });
 
-export async function OPTIONS() {
-  return options();
+export async function OPTIONS(req: NextRequest) {
+  return options(req);
 }
 
 export async function GET(req: NextRequest) {
   const user = await requireUser(req);
-  if (!user) return unauthorized();
+  if (!user) return unauthorized(req);
 
   const schedules = await prisma.scheduledMessage.findMany({
     where: { userId: user.id },
@@ -26,18 +26,18 @@ export async function GET(req: NextRequest) {
     take: 100
   });
 
-  return json({ schedules });
+  return json(req, { schedules });
 }
 
 export async function POST(req: NextRequest) {
   const user = await requireUser(req);
-  if (!user) return unauthorized();
+  if (!user) return unauthorized(req);
 
   const body = createSchema.parse(await req.json());
   const sendAt = new Date(body.sendAt);
 
   if (sendAt.getTime() <= Date.now()) {
-    return json({ error: "sendAt must be in the future" }, { status: 400 });
+    return json(req, { error: "sendAt must be in the future" }, { status: 400 });
   }
 
   const schedule = await prisma.scheduledMessage.create({
@@ -52,5 +52,5 @@ export async function POST(req: NextRequest) {
 
   await enqueueSchedule(schedule.id, sendAt);
 
-  return json({ schedule }, { status: 201 });
+  return json(req, { schedule }, { status: 201 });
 }

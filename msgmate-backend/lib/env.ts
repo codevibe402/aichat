@@ -7,6 +7,7 @@ const envSchema = z.object({
   GROQ_API_KEY: z.string().min(1),
   GROQ_MODEL: z.string().min(1),
   EXTENSION_ORIGIN: z.string().optional(),
+  CLERK_WEBHOOK_SIGNING_SECRET: z.string().optional(),
   RATE_LIMIT_REPLIES: z.string().default("20"),
   RATE_LIMIT_SUMMARY: z.string().default("10"),
   RATE_LIMIT_WINDOW_MS: z.string().default("60000")
@@ -19,6 +20,7 @@ export const env = envSchema.parse({
   GROQ_API_KEY: process.env.GROQ_API_KEY,
   GROQ_MODEL: process.env.GROQ_MODEL,
   EXTENSION_ORIGIN: process.env.EXTENSION_ORIGIN,
+  CLERK_WEBHOOK_SIGNING_SECRET: process.env.CLERK_WEBHOOK_SIGNING_SECRET,
   RATE_LIMIT_REPLIES: process.env.RATE_LIMIT_REPLIES,
   RATE_LIMIT_SUMMARY: process.env.RATE_LIMIT_SUMMARY,
   RATE_LIMIT_WINDOW_MS: process.env.RATE_LIMIT_WINDOW_MS

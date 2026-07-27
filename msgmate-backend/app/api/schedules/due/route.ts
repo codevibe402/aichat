@@ -3,13 +3,13 @@ import { requireUser } from "@/lib/auth";
 import { json, options, unauthorized } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
-export async function OPTIONS() {
-  return options();
+export async function OPTIONS(req: NextRequest) {
+  return options(req);
 }
 
 export async function GET(req: NextRequest) {
   const user = await requireUser(req);
-  if (!user) return unauthorized();
+  if (!user) return unauthorized(req);
 
   const schedules = await prisma.scheduledMessage.findMany({
     where: {
@@ -20,5 +20,5 @@ export async function GET(req: NextRequest) {
     take: 20
   });
 
-  return json({ schedules });
+  return json(req, { schedules });
 }

@@ -7,13 +7,13 @@ export async function OPTIONS(req:NextRequest) {
   return options(req);
 }
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const [db, cache] = await Promise.allSettled([
     prisma.$queryRaw`SELECT 1`,
     pingRedis()
   ]);
 
-  return json({
+  return json(req, {
     ok: db.status === "fulfilled" && cache.status === "fulfilled",
     database: db.status === "fulfilled" ? "ok" : "error",
     redis: cache.status === "fulfilled" ? "ok" : "error"

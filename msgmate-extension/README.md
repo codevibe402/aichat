@@ -16,30 +16,37 @@ For the full project overview, backend setup, and GitHub-ready documentation, se
 ## Local Setup
 
 1. Start the backend from `../msgmate-backend`.
-2. Open Chrome and go to `chrome://extensions`.
-3. Enable Developer mode.
-4. Click Load unpacked.
-5. Select this `msgmate-extension` folder.
-6. Open the MsgMate toolbar popup.
-7. Set:
+2. Build the Clerk auth bundles (required before loading — `background/clerk-bundle.js` and `popup/clerk-bundle.js` are build output, not checked in):
 
-```text
-Backend URL: http://localhost:3000
-Backend API Key: APP_API_KEY from ../msgmate-backend/.env
+```bash
+npm install
+npm run build
 ```
 
-8. Click Test Backend.
+3. Open Chrome and go to `chrome://extensions`.
+4. Enable Developer mode.
+5. Click Load unpacked.
+6. Select this `msgmate-extension` folder.
+7. Open the MsgMate toolbar popup — it will show "Not signed in". Click **Sign in to MsgMate**, which opens the backend web app in a new tab; sign in or sign up there.
+8. Reopen the popup — it should now show "Signed in as `<your email>`" (Clerk's sync-host mirrors the session into the extension).
 9. Open Gmail or another supported platform and click the purple floating MsgMate button.
+
+Re-run `npm run build` (or `npm run watch`) after editing `src/background-auth.js` or `src/popup-auth.js`.
 
 ## Files
 
 ```text
 manifest.json
+package.json               # build tooling for the Clerk bundles
+src/background-auth.js      # source for background/clerk-bundle.js
+src/popup-auth.js           # source for popup/clerk-bundle.js
 background/service_worker.js
+background/clerk-bundle.js  # build output, not checked in
 content/injector.js
 content/overlay.css
 popup/popup.html
 popup/popup.js
+popup/clerk-bundle.js       # build output, not checked in
 icons/
 ```
 
