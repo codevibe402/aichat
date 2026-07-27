@@ -3,7 +3,7 @@
 import { createClerkClient } from '@clerk/chrome-extension/client';
 
 const PUBLISHABLE_KEY = 'pk_test_YXdhaXRlZC1tdXR0LTkzLmNsZXJrLmFjY291bnRzLmRldiQ';
-const SYNC_HOST = 'https://aichat-3-il3q.onrender.com';
+const SYNC_HOST = 'https://aichat-9bwl.onrender.com';
 
 let clerkPromise = null;
 

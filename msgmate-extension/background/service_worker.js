@@ -1,6 +1,6 @@
 importScripts('./clerk-bundle.js');
 
-const DEFAULT_BACKEND_URL = 'https://aichat-3-il3q.onrender.com';
+const DEFAULT_BACKEND_URL = 'https://aichat-9bwl.onrender.com';
 const SCHEDULE_ALARM_PREFIX = 'msgmate-schedule-';
 const SCHEDULE_CACHE_KEY = 'msgmate_schedule_cache';
 const TOKEN_CACHE_KEY = 'msgmate_auth_token';
