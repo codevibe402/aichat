@@ -3,7 +3,9 @@ import { SignJWT, jwtVerify } from 'jose'
 const SESSION_COOKIE_NAME = 'msgmate_session'
 
 function getSecret() {
-  return new TextEncoder().encode(process.env.SESSION_SECRET!)
+  const secret = process.env.SESSION_SECRET
+  if (!secret) throw new Error('SESSION_SECRET not configured')
+  return new TextEncoder().encode(secret)
 }
 
 export async function createSessionToken(userId: string): Promise<string> {

@@ -7,8 +7,8 @@ const envSchema = z.object({
   GROQ_API_KEY: z.string().min(1),
   GROQ_MODEL: z.string().min(1),
   EXTENSION_ORIGIN: z.string().optional(),
-  SESSION_SECRET: z.string().min(32),
-  GOOGLE_CLIENT_ID: z.string().min(1),
+  SESSION_SECRET: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
   RATE_LIMIT_REPLIES: z.string().default("20"),
   RATE_LIMIT_SUMMARY: z.string().default("10"),
   RATE_LIMIT_WINDOW_MS: z.string().default("60000")
