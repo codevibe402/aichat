@@ -12,6 +12,14 @@
     "notifications",
     "identity"
   ],
+  "oauth2": {
+    "client_id": "857582910778-kb3tcaqahk8151kpvltfnsdlioohisel.apps.googleusercontent.com",
+    "scopes": [
+      "openid",
+      "profile",
+      "email"
+    ]
+  },
   "host_permissions": [
     "https://mail.google.com/*",
     "https://web.whatsapp.com/*",

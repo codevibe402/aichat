@@ -9,9 +9,10 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { idToken } = await req.json();
-    if (!idToken) {
-      return json(req, { error: "Missing idToken" }, { status: 400 });
+    const body = await req.json();
+    const { idToken, accessToken } = body;
+    if (!idToken && !accessToken) {
+      return json(req, { error: "Missing idToken or accessToken" }, { status: 400 });
     }
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -19,23 +20,29 @@ export async function POST(req: NextRequest) {
       return json(req, { error: "Server not configured for Google auth" }, { status: 500 });
     }
 
-    const response = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
-    );
+    let googleId, email, name;
 
-    if (!response.ok) {
-      return json(req, { error: "Invalid token" }, { status: 401 });
+    if (idToken) {
+      const response = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
+      );
+      if (!response.ok) return json(req, { error: "Invalid token" }, { status: 401 });
+      const payload = await response.json();
+      if (payload.aud !== clientId) return json(req, { error: "Token audience mismatch" }, { status: 401 });
+      googleId = payload.sub;
+      email = payload.email || null;
+      name = payload.name || null;
+    } else {
+      const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!response.ok) return json(req, { error: "Invalid token" }, { status: 401 });
+      const payload = await response.json();
+      if (payload.aud !== clientId && payload.azp !== clientId) return json(req, { error: "Token audience mismatch" }, { status: 401 });
+      googleId = payload.sub;
+      email = payload.email || null;
+      name = payload.name || null;
     }
-
-    const payload = await response.json();
-
-    if (payload.aud !== clientId) {
-      return json(req, { error: "Token audience mismatch" }, { status: 401 });
-    }
-
-    const googleId = payload.sub;
-    const email = payload.email || null;
-    const name = payload.name || null;
 
     const user = await prisma.user.upsert({
       where: { externalId: googleId },
