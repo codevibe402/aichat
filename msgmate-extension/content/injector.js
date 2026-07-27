@@ -318,17 +318,27 @@
     const btn = document.getElementById('scanImportantBtn');
     btn.disabled = true;
     btn.textContent = 'Scanning...';
+
+    const guard = setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'Scan for important';
+      showToast('Scan timed out — try again');
+    }, 30000);
+
     try {
       const chatData = await chrome.runtime.sendMessage({ action: 'READ_CHAT' });
       const messages = chatData?.messages ?? [];
       if (!messages.length) {
+        clearTimeout(guard);
         showToast('No messages found in this chat');
         return;
       }
       await scanForImportant(messages, true);
+      clearTimeout(guard);
       loadImportant();
       showToast(`Scanned ${messages.length} messages`);
     } catch {
+      clearTimeout(guard);
       showToast('Failed to scan chat');
     } finally {
       btn.disabled = false;

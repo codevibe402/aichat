@@ -467,22 +467,32 @@ async function requestBackend(path, options = {}) {
 
   while (true) {
     attempts++;
-    const response = await fetch(`${DEFAULT_BACKEND_URL}${path}`, {
-      ...options,
-      headers,
-      credentials: 'include',
-    });
-    const data = await readJson(response);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25000);
+    try {
+      const response = await fetch(`${DEFAULT_BACKEND_URL}${path}`, {
+        ...options,
+        headers,
+        credentials: 'include',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const data = await readJson(response);
 
-    if (response.ok) return data;
+      if (response.ok) return data;
 
-    if (response.status === 401) {
-      chrome.storage.local.remove('msgmate_auth_status');
-      throw new Error(data?.error || 'Session expired. Please sign in again.');
-    }
+      if (response.status === 401) {
+        chrome.storage.local.remove('msgmate_auth_status');
+        throw new Error(data?.error || 'Session expired. Please sign in again.');
+      }
 
-    if (attempts > maxRetries || response.status < 500) {
-      throw new Error(data?.error || `Backend returned ${response.status}`);
+      if (attempts > maxRetries || response.status < 500) {
+        throw new Error(data?.error || `Backend returned ${response.status}`);
+      }
+    } catch (err) {
+      clearTimeout(timer);
+      if (err.name === 'AbortError') throw new Error('Backend request timed out');
+      if (attempts > maxRetries) throw err;
     }
   }
 }
