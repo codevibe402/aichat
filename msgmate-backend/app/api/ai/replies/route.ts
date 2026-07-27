@@ -33,7 +33,6 @@ export async function POST(req: NextRequest) {
     const result = await generateReplies(body);
      
    return json(req,{
-    type: result.type,
     replies:result.replies,
     usage :result.usage
    } ); 

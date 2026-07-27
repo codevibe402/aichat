@@ -84,17 +84,16 @@ export async function generateReplies(input: {
   userGoal?: string;
 }) {
  
-const prompt = `Generate 3 ${input.tone} replies as the user.
+const prompt = `Generate 3 ${input.tone} replies replying to the other person's message.
+Only respond to messages marked "them" — ignore "me" messages.
 Platform: ${input.platform ?? "unknown"}
 Goal: ${input.userGoal ?? "not specified"}
-Messages: ${JSON.stringify(input.messages)}
-Latest from "them" → type "reply"; from "me" → type "follow_up".
-Return {"type":"reply"|"follow_up","replies":["...","...","..."]}`;
+Conversation: ${JSON.stringify(input.messages)}
+Return {"replies":["...","...","..."]}`;
 
 
   const result = await callGroq(prompt, 250);
   const parsed = parseJsonObject(result.text) as {
-    type ?:"reply"|"follow_up",
     replies?: string[] };
 
   if (!Array.isArray(parsed.replies) || parsed.replies.length !== 3) {
@@ -102,7 +101,6 @@ Return {"type":"reply"|"follow_up","replies":["...","...","..."]}`;
   }
 
   return {
-  type: parsed.type,
   replies: parsed.replies,
   usage: {
     input_tokens: result.usage?.prompt_tokens,
