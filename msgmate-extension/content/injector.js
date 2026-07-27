@@ -26,7 +26,7 @@
   const INPUT_SELECTORS = {
     gmail: '[aria-label="Message Body"][contenteditable="true"], [g_editable="true"][contenteditable="true"], div[role="textbox"][contenteditable="true"]',
     whatsapp: 'footer [contenteditable="true"][role="textbox"], [aria-label="Type a message"], [aria-label="Type a message"][contenteditable="true"], [data-tab="10"][contenteditable="true"], [data-lexical-editor="true"][contenteditable="true"]',
-    telegram: '.input-message-input[contenteditable="true"], [contenteditable="true"][aria-label="Message"], .composer_rich_textarea, [contenteditable="true"][role="textbox"], .message-input [contenteditable="true"]',
+    telegram: '#message-input-text #editable-message-text, #editable-message-text, [contenteditable="true"][aria-label="Message"], .input-message-input[contenteditable="true"], .composer_rich_textarea, [contenteditable="true"][role="textbox"], .message-input [contenteditable="true"]',
     instagram: '[placeholder="Message..."], [aria-label="Message"]',
     slack: '[data-qa="message_input"] [contenteditable="true"]',
     discord: '[role="textbox"][data-slate-editor="true"]',
