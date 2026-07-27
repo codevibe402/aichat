@@ -1,43 +1,35 @@
-// Bundled by esbuild into background/clerk-bundle.js and loaded into the
-// service worker via importScripts(). Exposes `self.MsgMateClerk`.
-//
-// The publishable key is not a secret — Clerk's naming convention marks it
-// safe to ship in client-side bundles. Sign-in itself happens on the backend
-// web app (which already has full Clerk UI); this just reads the session
-// that syncHost mirrors into the extension afterward.
-import { createClerkClient } from '@clerk/chrome-extension/client';
+const BACKEND_URL = 'https://aichat-9bwl.onrender.com';
 
-const PUBLISHABLE_KEY = 'pk_test_YXdhaXRlZC1tdXR0LTkzLmNsZXJrLmFjY291bnRzLmRldiQ';
-const SYNC_HOST = 'https://aichat-9bwl.onrender.com';
-
-let clerkPromise = null;
-
-function getClerk() {
-  if (!clerkPromise) {
-    clerkPromise = createClerkClient({
-      publishableKey: PUBLISHABLE_KEY,
-      syncHost: SYNC_HOST,
-      background: true
-    });
-  }
-  return clerkPromise;
-}
+let cachedToken = null;
+let tokenExpiry = 0;
 
 async function getClerkToken() {
-  const clerk = await getClerk();
-  if (!clerk.session) return null;
-  return clerk.session.getToken();
+  if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/auth/session`, {
+      credentials: 'include',
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    cachedToken = data.token;
+    tokenExpiry = Date.now() + 55 * 60 * 1000;
+    return cachedToken;
+  } catch {
+    return null;
+  }
 }
 
-// Cheap, no-network-call check other extension surfaces (content scripts,
-// the popup) can use to decide whether it's worth asking the background
-// worker to talk to the backend at all.
 async function getClerkStatus() {
-  const clerk = await getClerk();
-  return {
-    signedIn: Boolean(clerk.session),
-    email: clerk.user?.primaryEmailAddress?.emailAddress ?? null
-  };
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/auth/session`, {
+      credentials: 'include',
+    });
+    if (!res.ok) return { signedIn: false, email: null };
+    const data = await res.json();
+    return { signedIn: true, email: data.userId || 'your account' };
+  } catch {
+    return { signedIn: false, email: null };
+  }
 }
 
 self.MsgMateClerk = { getClerkToken, getClerkStatus };

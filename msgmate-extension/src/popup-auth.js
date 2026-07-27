@@ -1,37 +1,35 @@
-// Bundled by esbuild into popup/clerk-bundle.js and loaded via a <script>
-// tag before popup.js. Exposes `window.MsgMateClerk`.
-import { createClerkClient } from '@clerk/chrome-extension/client';
-
-const PUBLISHABLE_KEY = 'pk_test_YXdhaXRlZC1tdXR0LTkzLmNsZXJrLmFjY291bnRzLmRldiQ';
-const SYNC_HOST = 'https://aichat-9bwl.onrender.com';
-
-let clerkPromise = null;
-
-function getClerk() {
-  if (!clerkPromise) {
-    clerkPromise = createClerkClient({
-      publishableKey: PUBLISHABLE_KEY,
-      syncHost: SYNC_HOST
-    });
-  }
-  return clerkPromise;
-}
+const BACKEND_URL = 'https://aichat-9bwl.onrender.com';
 
 async function getClerkStatus() {
-  const clerk = await getClerk();
-
-  if (typeof clerk.load === 'function') {
-    await clerk.load();
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/auth/session`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      return { signedIn: false, email: null };
+    }
+    const data = await res.json();
+    return { signedIn: true, email: data.userId || 'your account' };
+  } catch {
+    return { signedIn: false, email: null };
   }
+}
 
-  return {
-    signedIn: Boolean(clerk.session),
-    email: clerk.user?.primaryEmailAddress?.emailAddress ?? null
-  };
+async function getClerkToken() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/auth/session`, {
+      credentials: 'include',
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.token || null;
+  } catch {
+    return null;
+  }
 }
 
 function signIn() {
-  chrome.tabs.create({ url: SYNC_HOST });
+  chrome.tabs.create({ url: BACKEND_URL });
 }
 
-window.MsgMateClerk = { getClerkStatus, signIn };
+window.MsgMateClerk = { getClerkStatus, getClerkToken, signIn };
