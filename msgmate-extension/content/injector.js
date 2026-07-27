@@ -56,7 +56,14 @@
   panel.innerHTML = buildPanelHTML();
 
   const style = document.createElement('style');
-  style.textContent = '#scanImportantBtn:hover{background:#3D3A47 !important}#scanImportantBtn:disabled{opacity:0.5;cursor:default}';
+  style.textContent = '#scanImportantBtn:hover{background:#3D3A47 !important}#scanImportantBtn:disabled{opacity:0.5;cursor:default}' +
+    '.important-card{border:1px solid #3D3A47;border-radius:8px;padding:10px;margin-top:8px;background:#1D1B26}' +
+    '.important-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}' +
+    '.important-platform{font-size:10px;color:#A7A3B8;text-transform:capitalize}' +
+    '.important-urgency{font-size:9px;padding:1px 6px;border-radius:4px;color:#fff}' +
+    '.important-subject{font-size:12px;font-weight:600;color:#E8E6F0;margin-bottom:2px}' +
+    '.important-preview{font-size:11px;color:#C8C4D4;line-height:1.4;margin-bottom:4px}' +
+    '.important-card-footer{display:flex;justify-content:space-between;font-size:9px;color:#A7A3B8}';
   document.head.appendChild(style);
 
   document.body.appendChild(fab);
@@ -206,6 +213,7 @@
       <span class="tab-indicator" id="tabIndicator"></span>
       <button class="tab" role="tab" aria-selected="true" data-view="view-reply">Reply</button>
       <button class="tab" role="tab" aria-selected="false" data-view="view-summary">Summary</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="view-important">Important</button>
       <button class="tab" role="tab" aria-selected="false" data-view="view-schedule">Schedule</button>
     </div>
     <div class="panel-body">
@@ -227,6 +235,10 @@
           <button class="btn-secondary" id="msgmate-summarize-btn" style="flex:1">Summarize</button>
         </div>
         <div id="msgmate-summary-result"></div>
+      </div>
+      <div class="panel-view" id="view-important" role="tabpanel">
+        <p class="section-label">Important messages</p>
+        <div id="msgmate-important-list"><p class="empty-note">No important messages yet. Click "Scan for important" on the Reply tab.</p></div>
       </div>
       <div class="panel-view" id="view-schedule" role="tabpanel">
         <p class="section-label">Reply to send</p>
@@ -255,6 +267,7 @@
   function refreshActiveTabData() {
     if (activeTab === 'reply') setTimeout(() => hydrateAutoContext({ force: true }), 400);
     if (activeTab === 'summary') setTimeout(() => hydrateAutoSummary({ force: true }), 400);
+    if (activeTab === 'important') setTimeout(() => loadImportant(), 200);
     if (activeTab === 'schedule') loadScheduled();
     updateAuthFooter();
   }
@@ -313,6 +326,7 @@
         return;
       }
       await scanForImportant(messages, true);
+      loadImportant();
       showToast(`Scanned ${messages.length} messages`);
     } catch {
       showToast('Failed to scan chat');
@@ -329,11 +343,47 @@
     if (!force && hash === lastImportantScan) return;
     lastImportantScan = hash;
     try {
-      chrome.runtime.sendMessage({
+      return await chrome.runtime.sendMessage({
         action: 'detectImportant',
         data: { platform: currentPlatform, messages }
       });
     } catch {}
+  }
+
+  async function loadImportant() {
+    const list = document.getElementById('msgmate-important-list');
+    if (!list) return;
+    try {
+      const messages = await chrome.runtime.sendMessage({ action: 'getImportant' }) || [];
+      if (!messages?.length) {
+        list.innerHTML = '<p class="empty-note">No important messages yet. Click "Scan for important" on the Reply tab.</p>';
+        return;
+      }
+      list.innerHTML = messages.map(m => `
+        <div class="important-card">
+          <div class="important-card-head">
+            <span class="important-platform">${escHtml(m.platform)}</span>
+            <span class="important-urgency" style="background:${urgencyColor(m.urgency)}">${m.urgency}</span>
+          </div>
+          ${m.subject ? `<div class="important-subject">${escHtml(m.subject)}</div>` : ''}
+          <div class="important-preview">${escHtml(m.preview)}</div>
+          <div class="important-card-footer">
+            <span>${escHtml(m.senderName)}</span>
+            <span>${formatDate(m.detectedAt)}</span>
+          </div>
+        </div>`).join('');
+    } catch {
+      list.innerHTML = '<p class="empty-note">Could not load important messages</p>';
+    }
+  }
+
+  function urgencyColor(u) {
+    return u === 'URGENT' ? '#ef4444' : u === 'HIGH' ? '#f59e0b' : '#64748b';
+  }
+
+  function formatDate(ts) {
+    if (!ts) return '';
+    return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
   function hydrateAutoContext(options = {}) {
