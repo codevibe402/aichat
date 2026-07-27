@@ -287,6 +287,22 @@
     container.innerHTML = '<div class="msgmate-summary-box" style="color:#D14343">Sign-in required. Open the MsgMate popup and sign in.</div>';
   }
 
+  let lastImportantScan = '';
+
+  async function scanForImportant(messages) {
+    if (!messages?.length) return;
+    if (!(await isSignedIn())) return;
+    const hash = messages.map(m => m.sender + ':' + m.text.slice(0, 50)).join('|');
+    if (hash === lastImportantScan) return;
+    lastImportantScan = hash;
+    try {
+      chrome.runtime.sendMessage({
+        action: 'detectImportant',
+        data: { platform: currentPlatform, messages }
+      });
+    } catch {}
+  }
+
   function hydrateAutoContext(options = {}) {
     const area = document.getElementById('msgmate-suggestions-area');
     if (!area) return;
@@ -315,6 +331,8 @@
       const chatData = await chrome.runtime.sendMessage({ action: 'READ_CHAT' });
       structuredMessages = chatData?.messages ?? [];
     } catch {}
+
+    scanForImportant(structuredMessages);
 
     const context = extractConversationContext();
 

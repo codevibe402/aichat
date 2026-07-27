@@ -107,6 +107,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (action === 'detectImportant') {
+    detectImportant(message.data)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
+
   if (action === 'scheduleMessage') {
     scheduleMessage(message.data, sender)
       .then(sendResponse)
@@ -340,6 +347,19 @@ async function cancelSchedule(id) {
   }
 
   return { success: true };
+}
+
+// ── Detect Important Messages via AI ───────────────────────────────────────
+async function detectImportant(data = {}) {
+  if (!data.messages?.length) return { messages: [], count: 0 };
+  const result = await requestBackend('/api/ai/detect-important', {
+    method: 'POST',
+    body: JSON.stringify({
+      platform: data.platform,
+      messages: data.messages,
+    }),
+  });
+  return result;
 }
 
 // ── Important Messages ─────────────────────────────────────────────────────

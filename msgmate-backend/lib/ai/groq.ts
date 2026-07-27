@@ -152,3 +152,37 @@ ${input.conversation}`;
     }
   };
 }
+
+export async function detectImportant(input: {
+  platform: string;
+  messages: { sender: string; text: string }[];
+}) {
+  const recent = input.messages.slice(-20);
+  if (recent.length === 0) return { messages: [], usage: { input_tokens: 0, output_tokens: 0 } };
+
+  const formatted = recent.map(m => `${m.sender === "them" ? "THEM" : "YOU"}: ${m.text}`).join("\n");
+
+  const prompt = `Scan this conversation for important messages that need the user's attention.
+Only flag messages that are URGENT (needs immediate reply), TIME-SENSITIVE (has deadline), or ACTIONABLE (user needs to do something).
+
+Conversation:
+${formatted}
+
+Return only messages that are important. For each, include: exact text, sender name, urgency level (URGENT/HIGH/MEDIUM/LOW), and a short reason.
+Format: {"messages":[{"text":"...","senderName":"...","urgency":"HIGH","reason":"..."}]}
+
+If nothing is important, return {"messages":[]}.`;
+
+  const result = await callGroq(prompt, 400);
+  const parsed = parseJsonObject(result.text) as {
+    messages?: { text: string; senderName?: string; urgency?: string; reason?: string }[];
+  };
+
+  return {
+    messages: parsed.messages || [],
+    usage: {
+      input_tokens: result.usage?.prompt_tokens,
+      output_tokens: result.usage?.completion_tokens
+    }
+  };
+}
