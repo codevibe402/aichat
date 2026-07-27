@@ -40,6 +40,7 @@
   let selectedTone = 'Friendly';
   let scheduledMessages = [];
   let aiLoading = false;
+  let cachedAuth = { status: null, time: 0 };
 
   const toneMap = { Friendly: 'friendly', Concise: 'concise', Formal: 'formal' };
   const reverseToneMap = { friendly: 'Friendly', concise: 'Concise', formal: 'Formal' };
@@ -53,6 +54,10 @@
   panel.id = 'msgmate-panel';
   panel.className = 'is-hidden';
   panel.innerHTML = buildPanelHTML();
+
+  const style = document.createElement('style');
+  style.textContent = '#scanImportantBtn:hover{background:#3D3A47 !important}#scanImportantBtn:disabled{opacity:0.5;cursor:default}';
+  document.head.appendChild(style);
 
   document.body.appendChild(fab);
   document.body.appendChild(panel);
@@ -110,6 +115,8 @@
     if (suggestion) injectText(suggestion.textContent.trim());
 
     if (e.target.id === 'msgmate-summarize-btn' || e.target.id === 'copyBtn') summarizeChat();
+
+    if (e.target.id === 'scanImportantBtn') scanCurrentChat();
 
     const schedChip = e.target.closest('#scheduleChips .chip');
     if (schedChip) {
@@ -208,6 +215,7 @@
           <button class="chip" aria-pressed="false">Concise</button>
           <button class="chip" aria-pressed="false">Formal</button>
         </div>
+        <button class="scan-btn" id="scanImportantBtn" style="display:block;width:100%;margin:10px 0 0;background:#2A2833;border:1px solid #3D3A47;color:#C8C4D4;padding:8px;border-radius:8px;font-size:12px;cursor:pointer">Scan for important</button>
         <div id="msgmate-suggestions-area">
           <div class="msgmate-spinner"><div class="msgmate-dot-pulse"><span></span><span></span><span></span></div> Reading chat...</div>
         </div>
@@ -255,31 +263,35 @@
     const avatar = document.getElementById('auth-avatar');
     const text = document.getElementById('auth-footer');
     if (!avatar || !text) return;
-    try {
-      const status = await chrome.runtime.sendMessage({ action: 'getAuthStatus' });
-      if (status?.signedIn) {
-        const initial = status.email ? status.email[0].toUpperCase() : 'U';
-        avatar.textContent = initial;
-        avatar.style.background = '#EFEAFF';
-        avatar.style.color = '#5136C4';
-        text.innerHTML = `Signed in as <strong>${escHtml(status.email || 'your account')}</strong>`;
-      } else {
-        avatar.textContent = '?';
-        avatar.style.background = '#F4F2FB';
-        avatar.style.color = '#A7A3B8';
-        text.textContent = 'Not signed in — open the popup';
-      }
-    } catch {
+    const status = await getCachedAuth();
+    if (status?.signedIn) {
+      const initial = status.email ? status.email[0].toUpperCase() : 'U';
+      avatar.textContent = initial;
+      avatar.style.background = '#EFEAFF';
+      avatar.style.color = '#5136C4';
+      text.innerHTML = `Signed in as <strong>${escHtml(status.email || 'your account')}</strong>`;
+    } else {
       avatar.textContent = '?';
-      text.textContent = 'Could not check sign-in';
+      avatar.style.background = '#F4F2FB';
+      avatar.style.color = '#A7A3B8';
+      text.textContent = 'Not signed in — open the popup';
     }
   }
 
   async function isSignedIn() {
+    const status = await getCachedAuth();
+    return !!status?.signedIn;
+  }
+
+  async function getCachedAuth() {
+    if (cachedAuth.status?.signedIn && Date.now() - cachedAuth.time < 120_000) return cachedAuth.status;
     try {
       const status = await chrome.runtime.sendMessage({ action: 'getAuthStatus' });
-      return Boolean(status?.signedIn);
-    } catch { return false; }
+      cachedAuth = { status, time: Date.now() };
+      return status;
+    } catch {
+      return cachedAuth.status?.signedIn ? cachedAuth.status : null;
+    }
   }
 
   function showSignInRequired(container) {
@@ -289,11 +301,32 @@
 
   let lastImportantScan = '';
 
-  async function scanForImportant(messages) {
+  async function scanCurrentChat() {
+    const btn = document.getElementById('scanImportantBtn');
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+    try {
+      const chatData = await chrome.runtime.sendMessage({ action: 'READ_CHAT' });
+      const messages = chatData?.messages ?? [];
+      if (!messages.length) {
+        showToast('No messages found in this chat');
+        return;
+      }
+      await scanForImportant(messages, true);
+      showToast(`Scanned ${messages.length} messages`);
+    } catch {
+      showToast('Failed to scan chat');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Scan for important';
+    }
+  }
+
+  async function scanForImportant(messages, force = false) {
     if (!messages?.length) return;
     if (!(await isSignedIn())) return;
     const hash = messages.map(m => m.sender + ':' + m.text.slice(0, 50)).join('|');
-    if (hash === lastImportantScan) return;
+    if (!force && hash === lastImportantScan) return;
     lastImportantScan = hash;
     try {
       chrome.runtime.sendMessage({
