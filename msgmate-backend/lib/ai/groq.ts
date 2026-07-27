@@ -83,12 +83,25 @@ export async function generateReplies(input: {
   replyToMessageId?: string;
   userGoal?: string;
 }) {
- 
-const prompt = `Generate 3 ${input.tone} replies replying to the other person's message.
-Only respond to messages marked "them" — ignore "me" messages.
+
+const themMessages = input.messages.filter(m => m.sender === "them").map(m => m.text);
+const conversationFormatted = input.messages.map(m =>
+  `${m.sender === "them" ? "THEM:" : "YOU:"} ${m.text}`
+).join("\n");
+
+const prompt = `You are the user. Write 3 ${input.tone} replies to the other person's message.
+
+Only the person marked THEM needs a reply. Ignore YOUR own messages.
+
+THEM said:
+${themMessages.join("\n")}
+
+Full conversation for context:
+${conversationFormatted}
+
 Platform: ${input.platform ?? "unknown"}
 Goal: ${input.userGoal ?? "not specified"}
-Conversation: ${JSON.stringify(input.messages)}
+
 Return {"replies":["...","...","..."]}`;
 
 
