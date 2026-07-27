@@ -55,7 +55,7 @@ export function AuthHeader() {
             </SignUpButton>
           </>
         ) : (
-          <UserButton afterSignOutUrl="/" />
+          <UserButton />
         )}
       </div>
     </header>
