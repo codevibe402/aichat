@@ -1,5 +1,8 @@
 import { env } from "@/lib/env";
 import {EmptyResponseError,GroqRequestError,GroqRateLimitError,GroqUnauthorizedError,InvalidReplyCountError,InvalidJsonError} from "./aierror"
+import { SYSTEM_PROMPT, buildReplyPrompt, buildSummaryPrompt, buildImportantPrompt, buildClassifyPrompt } from "./prompts";
+import type { GenerateRepliesInput, DetectMessage, ClassifyMessageInput, ClassifyMessageResult } from "./prompts";
+
 type GroqChatResponse = {
   choices?: {
     message?: {
@@ -15,7 +18,10 @@ type GroqChatResponse = {
   };
 };
 
-async function callGroq(prompt: string, maxTokens: number) {
+// ── Private: Internal helpers ─────────────────────────────────────────────────
+
+/** @internal Raw HTTP call to Groq API — must never be exported. Contains the API key. */
+async function _callGroq(prompt: string, maxTokens: number) {
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -32,7 +38,7 @@ async function callGroq(prompt: string, maxTokens: number) {
       messages: [
         {
           role: "system",
-          content: "Valid JSON only. Concise, polite replies."
+          content: SYSTEM_PROMPT
         },
         {
           role: "user",
@@ -44,7 +50,7 @@ async function callGroq(prompt: string, maxTokens: number) {
 
   const data = (await response.json()) as GroqChatResponse;
 
- if (response.status === 401) {
+  if (response.status === 401) {
   throw new GroqUnauthorizedError();
 }
 
@@ -71,58 +77,9 @@ if (!response.ok || data.error) {
     usage: data.usage
   };
 }
-type ChatMessage = {
-  sender: "me" | "them";
-  text: string;
-};
 
-export async function generateReplies(input: {
-  platform?: string;
-  tone: string;
-  messages: ChatMessage[];
-  replyToMessageId?: string;
-  userGoal?: string;
-}) {
-
-const themMessages = input.messages.filter(m => m.sender === "them").map(m => m.text);
-const conversationFormatted = input.messages.map(m =>
-  `${m.sender === "them" ? "THEM:" : "YOU:"} ${m.text}`
-).join("\n");
-
-const prompt = `You are the user. Write 3 ${input.tone} replies to the other person's message.
-
-Only the person marked THEM needs a reply. Ignore YOUR own messages.
-
-THEM said:
-${themMessages.join("\n")}
-
-Full conversation for context:
-${conversationFormatted}
-
-Platform: ${input.platform ?? "unknown"}
-Goal: ${input.userGoal ?? "not specified"}
-
-Return {"replies":["...","...","..."]}`;
-
-
-  const result = await callGroq(prompt, 250);
-  const parsed = parseJsonObject(result.text) as {
-    replies?: string[] };
-
-  if (!Array.isArray(parsed.replies) || parsed.replies.length !== 3) {
-    throw new InvalidReplyCountError();
-  }
-
-  return {
-  replies: parsed.replies,
-  usage: {
-    input_tokens: result.usage?.prompt_tokens,
-    output_tokens: result.usage?.completion_tokens
-  }
-};
-}
-
-function parseJsonObject(text: string) {
+/** @internal Parse JSON from LLM response text with fallback extraction. */
+function _parseJsonObject(text: string) {
   const trimmed = text.trim();
 
   try {
@@ -137,12 +94,52 @@ function parseJsonObject(text: string) {
   }
 }
 
+// ── Public API: Called by backend route handlers & MessageService ─────────────────
+
+/**
+ * Low-level AI chat — sends a raw prompt to Groq and returns the response text.
+ * Used by MessageService for the Route → MessageService → Guardrails → AI workflow.
+ *
+ * @param prompt - The user message prompt
+ * @param maxTokens - Maximum tokens to generate (default: 250)
+ * @returns { text, usage } from the Groq API
+ */
+export async function chat(prompt: string, maxTokens: number = 250) {
+  return _callGroq(prompt, maxTokens);
+}
+
+/**
+ * Parse JSON from LLM response text with fallback extraction.
+ * Exported so MessageService can parse AI output after validation.
+ */
+export function parseJson(text: string) {
+  return _parseJsonObject(text);
+}
+
+export async function generateReplies(input: GenerateRepliesInput) {
+  const prompt = buildReplyPrompt(input);
+
+  const result = await _callGroq(prompt, 250);
+  const parsed = _parseJsonObject(result.text) as {
+    replies?: string[] };
+
+  if (!Array.isArray(parsed.replies) || parsed.replies.length !== 3) {
+    throw new InvalidReplyCountError();
+  }
+
+  return {
+  replies: parsed.replies,
+  usage: {
+    input_tokens: result.usage?.prompt_tokens,
+    output_tokens: result.usage?.completion_tokens
+  }
+}
+}
+
 export async function summarizeChat(input: { conversation: string }) {
-  const prompt = `Summarize in 3-5 bullet points. Key decisions, action items, sentiment.
+  const prompt = buildSummaryPrompt(input.conversation);
 
-${input.conversation}`;
-
-  const result = await callGroq(prompt, 200);
+  const result = await _callGroq(prompt, 200);
 
   return {
     summary: result.text.trim(),
@@ -155,31 +152,35 @@ ${input.conversation}`;
 
 export async function detectImportant(input: {
   platform: string;
-  messages: { sender: string; text: string }[];
+  messages: DetectMessage[];
 }) {
   const recent = input.messages.slice(-20);
   if (recent.length === 0) return { messages: [], usage: { input_tokens: 0, output_tokens: 0 } };
 
-  const formatted = recent.map(m => `${m.sender === "them" ? "THEM" : "YOU"}: ${m.text}`).join("\n");
+  const prompt = buildImportantPrompt(recent, input.platform);
 
-  const prompt = `Scan this conversation for important messages that need the user's attention.
-Only flag messages that are URGENT (needs immediate reply), TIME-SENSITIVE (has deadline), or ACTIONABLE (user needs to do something).
-
-Conversation:
-${formatted}
-
-Return only messages that are important. For each, include: exact text, sender name, urgency level (URGENT/HIGH/MEDIUM/LOW), and a short reason.
-Format: {"messages":[{"text":"...","senderName":"...","urgency":"HIGH","reason":"..."}]}
-
-If nothing is important, return {"messages":[]}.`;
-
-  const result = await callGroq(prompt, 400);
-  const parsed = parseJsonObject(result.text) as {
+  const result = await _callGroq(prompt, 400);
+  const parsed = _parseJsonObject(result.text) as {
     messages?: { text: string; senderName?: string; urgency?: string; reason?: string }[];
   };
 
   return {
     messages: parsed.messages || [],
+    usage: {
+      input_tokens: result.usage?.prompt_tokens,
+      output_tokens: result.usage?.completion_tokens
+    }
+  };
+}
+
+export async function classifyMessage(input: ClassifyMessageInput) {
+  const prompt = buildClassifyPrompt(input);
+
+  const result = await _callGroq(prompt, 200);
+  const parsed = _parseJsonObject(result.text) as ClassifyMessageResult;
+
+  return {
+    classification: parsed,
     usage: {
       input_tokens: result.usage?.prompt_tokens,
       output_tokens: result.usage?.completion_tokens

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+// ── Private: Env schema ─────────────────────────────────────────────────────
+
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
@@ -14,6 +16,12 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.string().default("60000")
 });
 
+// ── Public API: Environment config ──────────────────────────────────────────
+
+/**
+ * @internal Parsed environment variables.
+ * Sensitive: GROQ_API_KEY, SESSION_SECRET, GOOGLE_CLIENT_ID must never reach the client.
+ */
 export const env = envSchema.parse({
   DATABASE_URL: process.env.DATABASE_URL,
   REDIS_URL: process.env.REDIS_URL,

@@ -57,13 +57,10 @@ const currentPlatform = PLATFORM_MAP[location.hostname] ?? "unknown";
 // context it should reply to — the safer assumption.
 
 
-// ── 3. DOM helpers ────────────────────────────────────────────────────────────
+// ── 3. DOM helpers (private) ────────────────────────────────────────────────────
 
-/**
- * Returns true if an element is actually rendered on screen.
- * We use this to skip hidden duplicate nodes that some SPAs keep in the DOM.
- */
-function isVisible(el) {
+/** @private Returns true if an element is actually rendered on screen. */
+function _isVisible(el) {
   const rect  = el.getBoundingClientRect();
   const style = window.getComputedStyle(el);
   return (
@@ -75,10 +72,10 @@ function isVisible(el) {
 }
 
 /**
- * Strips whitespace noise from a single message string.
+ * @private Strips whitespace noise from a single message string.
  * Does NOT truncate — callers decide how many messages to keep.
  */
-function cleanText(raw) {
+function _cleanText(raw) {
   return (raw ?? "")
     .replace(/\u00a0/g, " ")   // non-breaking spaces → regular space
     .replace(/\s+/g, " ")      // collapse runs of whitespace
@@ -112,10 +109,10 @@ function cleanText(raw) {
 // We fall back to `data-pre-plain-text` (a meta attribute WA adds) if the
 // span is absent, which gives us something like "[10:30, 6/10/2026] Alice: ".
 
-function readWhatsAppMessages() {
+function _readWhatsAppMessages() {
   const rows = Array.from(
     document.querySelectorAll(".message-in, .message-out, [data-testid='msg-container']")
-  ).filter(isVisible);
+  ).filter(_isVisible);
 
     return rows.slice(-10).map((row) => {
     // .message-out is present on rows the current user sent
@@ -123,7 +120,7 @@ function readWhatsAppMessages() {
 
     // Prefer the dedicated text span; fall back to full row text
     const textSpan = row.querySelector("span.selectable-text, [data-testid='msg-container'] span");
-    const text = cleanText(textSpan?.innerText ?? row.innerText);
+    const text = _cleanText(textSpan?.innerText ?? row.innerText);
 
     return { sender: isMine ? "me" : "them", text };
   }).filter((m) => m.text.length > 0);
@@ -140,29 +137,95 @@ function readWhatsAppMessages() {
 // `.gD[email]` on each message and compare it to the logged-in user's address
 // (visible in the account switcher: `[aria-label*="Google Account:"]`).
 
-function readGmailMessages() {
+function _readGmailMessages() {
   const bodies = Array.from(
     document.querySelectorAll(".a3s.aiL, .a3s")
-  ).filter(isVisible);
+  ).filter(_isVisible);
   const senderNodes = Array.from(
     document.querySelectorAll(".gD[email], .gD, .go")
-  ).filter(isVisible);
-  const myEmail = getGoogleAccountEmail();
+  ).filter(_isVisible);
+  const myEmail = _getGoogleAccountEmail();
 
   return bodies.slice(-10).map((el, i, arr) => {
-    const text = cleanText(el.innerText);
+    const text = _cleanText(el.innerText);
     const senderEl = senderNodes.at(i);
-    const senderEmail = cleanText(senderEl?.getAttribute("email") ?? "");
-    const senderName = cleanText(senderEl?.innerText ?? "");
+    const senderEmail = _cleanText(senderEl?.getAttribute("email") ?? "");
+    const senderName = _cleanText(senderEl?.innerText ?? "");
     const sender = myEmail && (senderEmail === myEmail || senderName.includes(myEmail)) ? "me" : "them";
     return { sender, text };
   }).filter((m) => m.text.length > 0);
 }
 
-function getGoogleAccountEmail() {
+function _getGoogleAccountEmail() {
   const accountLabel = document.querySelector('[aria-label*="Google Account"]')?.getAttribute("aria-label") ?? "";
   const match = accountLabel.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
   return match?.[0] ?? "";
+}
+
+// Gmail inbox scan ---------------------------------------------------------
+// This deliberately reads thread-list metadata only.  It never opens a
+// thread, reads a message body, or calls a Google API.
+function _isDesktopGmail() {
+  return currentPlatform === "gmail" &&
+    window.matchMedia("(pointer: fine)").matches &&
+    window.innerWidth >= 768;
+}
+
+function _getGmailThreadUrl(row) {
+  const directLink = row.querySelector('a[href*="#"]')?.href;
+  if (directLink) return directLink;
+
+  const threadId = row.getAttribute("data-legacy-thread-id") ||
+    row.getAttribute("data-thread-id") ||
+    row.dataset.legacyThreadId || "";
+  if (!threadId) return "";
+
+  // Gmail's thread list normally exposes this legacy id.  Keep the current
+  // account path, but use the Inbox route because this scanner only reads rows
+  // from the thread list.
+  return `${location.origin}${location.pathname}#inbox/${encodeURIComponent(threadId)}`;
+}
+
+function _readGmailUnreadThreads() {
+  if (currentPlatform !== "gmail") {
+    return { supported: false, reason: "This scanner is available only on Gmail." };
+  }
+  if (!_isDesktopGmail()) {
+    return { supported: false, reason: "Unread mail scanning is supported only in desktop Chrome." };
+  }
+  if (location.hash && !location.hash.startsWith("#inbox")) {
+    return { supported: false, reason: "Open Gmail Inbox before scanning unread mail." };
+  }
+
+  const rows = Array.from(document.querySelectorAll('tr.zA, tr[role="main"] tr[role="row"]'))
+    .filter(_isVisible)
+    .filter((row) => row.classList.contains("zE"));
+
+  const threads = rows.map((row) => {
+    const sender = _cleanText(
+      row.querySelector('.yX.xY .yW span, .yX .yW span, .yX.xY')?.innerText ?? ""
+    );
+    const subject = _cleanText(
+      row.querySelector('.y6 span[id], .y6 span, .bog')?.innerText ?? ""
+    );
+    const snippet = _cleanText(
+      row.querySelector('.y2, .y6 .y2')?.innerText ?? ""
+    ).replace(/^[-\u2013\u2014]\s*/, "");
+
+    return {
+      sender,
+      subject,
+      snippet,
+      threadUrl: _getGmailThreadUrl(row),
+      unread: true,
+    };
+  }).filter((thread) => thread.sender || thread.subject || thread.snippet);
+
+  return {
+    supported: true,
+    accountEmail: _getGoogleAccountEmail() || null,
+    threads,
+  };
 }
 
 // ── 4c. Telegram Web ─────────────────────────────────────────────────────────
@@ -170,16 +233,16 @@ function getGoogleAccountEmail() {
 // Each message bubble has class `.message`. Outgoing messages also have
 // `.message.own` (or `.out` on some builds).
 
-function readTelegramMessages() {
+function _readTelegramMessages() {
   const bubbles = Array.from(
     document.querySelectorAll(".message")
-  ).filter(isVisible);
+  ).filter(_isVisible);
 
   return bubbles.slice(-10).map((bubble) => {
     // The "own" class marks messages sent by the current user
     const isMine = bubble.classList.contains("own") || bubble.classList.contains("out");
     const textEl  = bubble.querySelector(".text-content, .message-text span");
-    const text    = cleanText(textEl?.innerText ?? bubble.innerText);
+    const text    = _cleanText(textEl?.innerText ?? bubble.innerText);
     return { sender: isMine ? "me" : "them", text };
   }).filter((m) => m.text.length > 0);
 }
@@ -191,20 +254,20 @@ function readTelegramMessages() {
 // We detect "me" by comparing the sender name to the current user's display
 // name shown in the sidebar: `[data-qa="current-user-customstatus-profile"]`.
 
-function readSlackMessages() {
-  const myName = cleanText(
+function _readSlackMessages() {
+  const myName = _cleanText(
     document.querySelector("[data-qa='current-user-customstatus-profile']")?.innerText ?? ""
   );
 
   const items = Array.from(
     document.querySelectorAll("[data-qa='virtual-list-item']")
-  ).filter(isVisible);
+  ).filter(_isVisible);
 
   return items.slice(-10).map((item) => {
     const senderEl = item.querySelector("[data-qa='message_sender_name']");
-    const senderName = cleanText(senderEl?.innerText ?? "");
+    const senderName = _cleanText(senderEl?.innerText ?? "");
     const bodyEl   = item.querySelector(".p-rich_text_block");
-    const text     = cleanText(bodyEl?.innerText ?? item.innerText);
+    const text     = _cleanText(bodyEl?.innerText ?? item.innerText);
     const isMine   = myName.length > 0 && senderName === myName;
     return { sender: isMine ? "me" : "them", text };
   }).filter((m) => m.text.length > 0);
@@ -217,22 +280,22 @@ function readSlackMessages() {
 // on parent elements, but the most reliable signal is the presence of the
 // username matching the logged-in user shown in the lower-left panel.
 
-function readDiscordMessages() {
-  const myName = cleanText(
+function _readDiscordMessages() {
+  const myName = _cleanText(
     document.querySelector("[class*='nameTag'] [class*='username']")?.innerText ?? ""
   );
 
   const messages = Array.from(
     document.querySelectorAll("[id^='chat-messages-'] [class*='messageContent']")
-  ).filter(isVisible);
+  ).filter(_isVisible);
 
   return messages.slice(-10).map((el) => {
     // Walk up to find the username for this message group
     const header    = el.closest("[class*='message-']")
                         ?.querySelector("[class*='username']");
-    const sender    = cleanText(header?.innerText ?? "");
+    const sender    = _cleanText(header?.innerText ?? "");
     const isMine    = myName.length > 0 && sender === myName;
-    const text      = cleanText(el.innerText);
+    const text      = _cleanText(el.innerText);
     return { sender: isMine ? "me" : "them", text };
   }).filter((m) => m.text.length > 0);
 }
@@ -246,7 +309,7 @@ function readDiscordMessages() {
 //
 // Replace this with a real adapter once you've inspected the DOM for that site.
 
-function readGenericMessages() {
+function _readGenericMessages() {
   return [];
 }
 
@@ -257,17 +320,17 @@ function readGenericMessages() {
 // writing a reader above and adding one line here.
 
 const ADAPTERS = {
-  whatsapp:   readWhatsAppMessages,
-  gmail:      readGmailMessages,
-  telegram:   readTelegramMessages,
-  slack:      readSlackMessages,
-  discord:    readDiscordMessages,
+  whatsapp:   _readWhatsAppMessages,
+  gmail:      _readGmailMessages,
+  telegram:   _readTelegramMessages,
+  slack:      _readSlackMessages,
+  discord:    _readDiscordMessages,
   // Not yet implemented — will return []
-  instagram:  readGenericMessages,
-  twitter:    readGenericMessages,
-  x:          readGenericMessages,
-  teams:      readGenericMessages,
-  googlechat: readGenericMessages,
+  instagram:  _readGenericMessages,
+  twitter:    _readGenericMessages,
+  x:          _readGenericMessages,
+  teams:      _readGenericMessages,
+  googlechat: _readGenericMessages,
 };
 
 
@@ -280,8 +343,8 @@ const ADAPTERS = {
 //   3. Logs the extracted messages to the console in a table so you can verify
 //      what the AI will actually receive — crucial for debugging wrong replies.
 
-function readCurrentChat() {
-  const adapter = ADAPTERS[currentPlatform] ?? readGenericMessages;
+function _readCurrentChat() {
+  const adapter = ADAPTERS[currentPlatform] ?? _readGenericMessages;
 
   let messages = [];
   try {
@@ -324,7 +387,11 @@ function readCurrentChat() {
 // If you ever need an async adapter, return `true` from the listener to keep
 // the channel open, then call sendResponse inside the promise callback.
 
-const ALLOWED_ACTIONS = new Set(["READ_CHAT"]);
+  // SECURITY: @private — This allow-list is the primary security boundary for content scripts.
+  // Only "READ_CHAT" and "scanUnreadMail" are accepted. Any other action is silently ignored.
+  // This prevents a malicious web page from sending arbitrary messages through the
+  // extension's message bus (e.g., trying to trigger auth bypass or data exfiltration).
+  const ALLOWED_ACTIONS = new Set(["READ_CHAT", "scanUnreadMail"]);
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!ALLOWED_ACTIONS.has(message?.action)) return; // ignore unknown actions
@@ -332,8 +399,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === "READ_CHAT") {
     sendResponse({
       platform: currentPlatform,
-      messages: readCurrentChat(),
+      messages: _readCurrentChat(),
     });
+  }
+
+  if (message.action === "scanUnreadMail") {
+    sendResponse(_readGmailUnreadThreads());
   }
 
   // Returning false (implicit) tells Chrome we called sendResponse synchronously.

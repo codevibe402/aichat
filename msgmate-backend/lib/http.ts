@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 
-function getCorsHeaders(req: Request) : HeadersInit {
+// ── Private: CORS helpers ───────────────────────────────────────────────────
+
+/** @internal Validates the request origin and returns CORS headers. */
+function _getCorsHeaders(req: Request): HeadersInit {
   const origin = req.headers.get("origin");
 
   if (origin !== env.EXTENSION_ORIGIN) {
@@ -16,24 +19,29 @@ function getCorsHeaders(req: Request) : HeadersInit {
   };
 }
 
+// ── Public API: Response helpers used by route handlers ─────────────────────
+
+/** Wraps data in a NextResponse JSON with CORS headers. */
 export function json(
   req: Request,
-  data:unknown,
+  data: unknown,
   init?: ResponseInit,
 ) {
   return NextResponse.json(data, {
     ...init,
     headers: {
-      ...getCorsHeaders(req),
+      ..._getCorsHeaders(req),
       ...init?.headers,
     },
   });
 }
 
+/** Returns a 401 Unauthorized JSON response. */
 export function unauthorized(req: Request) {
   return json(req, { error: "Unauthorized" }, { status: 401 });
 }
 
+/** Handles OPTIONS preflight requests with strict origin validation. */
 export function options(req: Request) {
   const origin = req.headers.get("origin");
 
@@ -43,6 +51,6 @@ export function options(req: Request) {
 
   return new Response(null, {
     status: 204,
-    headers: getCorsHeaders(req),
+    headers: _getCorsHeaders(req),
   });
 }

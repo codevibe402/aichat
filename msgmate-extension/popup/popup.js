@@ -216,6 +216,87 @@ document.addEventListener('DOMContentLoaded', async () => {
   function priorityColor(p) { return p === 'HIGH' ? '#ef4444' : p === 'MEDIUM' ? '#f59e0b' : '#22c55e'; }
   function formatDate(ts) { return new Date(ts).toLocaleDateString([], { month:'short', day:'numeric' }); }
 
+  // Gmail scanner stays user-triggered: it asks the worker to locate an open
+  // Gmail tab, then renders only the thread-list metadata returned by content.js.
+  const scanUnreadMailBtn = document.getElementById('scanUnreadMailBtn');
+  const mailScanKeywords = document.getElementById('mailScanKeywords');
+  const mailScanStatus = document.getElementById('mailScanStatus');
+  const mailScanResults = document.getElementById('mailScanResults');
+
+  function setMailScanStatus(message, tone = '') {
+    mailScanStatus.textContent = message;
+    mailScanStatus.className = `mail-scan-status${tone ? ` ${tone}` : ''}`;
+  }
+
+  function renderMailScanResults(threads) {
+    mailScanResults.replaceChildren();
+    if (!threads.length) return;
+    const fragment = document.createDocumentFragment();
+    threads.forEach((thread) => {
+      const result = document.createElement('button');
+      result.type = 'button';
+      result.className = 'mail-result';
+      result.title = thread.threadUrl ? 'Open thread in Gmail' : 'Thread URL unavailable';
+      result.disabled = !thread.threadUrl;
+
+      const top = document.createElement('div');
+      top.className = 'mail-result-top';
+      const dot = document.createElement('span');
+      dot.className = 'mail-result-unread';
+      dot.setAttribute('aria-label', 'Unread');
+      const sender = document.createElement('span');
+      sender.className = 'mail-result-sender';
+      sender.textContent = thread.sender || 'Unknown sender';
+      top.append(dot, sender);
+
+      const subject = document.createElement('div');
+      subject.className = 'mail-result-subject';
+      subject.textContent = thread.subject || '(No subject)';
+      const snippet = document.createElement('div');
+      snippet.className = 'mail-result-snippet';
+      snippet.textContent = thread.snippet || 'No preview available';
+      result.append(top, subject, snippet);
+      result.addEventListener('click', () => chrome.tabs.create({ url: thread.threadUrl }));
+      fragment.appendChild(result);
+    });
+    mailScanResults.appendChild(fragment);
+  }
+
+  if (scanUnreadMailBtn && mailScanKeywords && mailScanStatus && mailScanResults) {
+    scanUnreadMailBtn.addEventListener('click', async () => {
+      scanUnreadMailBtn.disabled = true;
+      scanUnreadMailBtn.textContent = 'Scanning visible unread mail…';
+      mailScanResults.replaceChildren();
+      setMailScanStatus('Looking for an open Gmail tab…');
+      try {
+        const result = await chrome.runtime.sendMessage({
+          action: 'scanUnreadMail',
+          keywords: mailScanKeywords.value,
+        });
+        if (!result?.ok) {
+          setMailScanStatus(result?.error || 'The unread-mail scan could not run.', 'error');
+          return;
+        }
+        renderMailScanResults(result.threads || []);
+        const account = result.accountEmail ? ` for ${result.accountEmail}` : '';
+        if (result.accountChanged) {
+          setMailScanStatus(`Gmail account changed${account}. Showing ${result.threads.length} matching unread thread${result.threads.length === 1 ? '' : 's'}.`, 'warning');
+        } else if (result.threads.length) {
+          setMailScanStatus(`Found ${result.threads.length} matching unread thread${result.threads.length === 1 ? '' : 's'}${account}.`);
+        } else if (result.scannedCount) {
+          setMailScanStatus('No visible unread threads matched those keywords.');
+        } else {
+          setMailScanStatus('No visible unread threads found. Open Gmail Inbox and try again.');
+        }
+      } catch {
+        setMailScanStatus('The scan could not run. Keep Gmail open, refresh it, then try again.', 'error');
+      } finally {
+        scanUnreadMailBtn.disabled = false;
+        scanUnreadMailBtn.textContent = 'Scan unread mail';
+      }
+    });
+  }
+
   // ── Popup view switching ──
   document.querySelectorAll('.view-pill').forEach((pill) => {
     pill.addEventListener('click', () => {

@@ -6,3 +6,5 @@ node_modules
 dist
 coverage
 prisma/dev.db
+questions.md
+interview-prep.md

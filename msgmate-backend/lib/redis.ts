@@ -1,10 +1,15 @@
 import IORedis from "ioredis";
 import { env } from "@/lib/env";
 
+// ── Private: Redis singleton ────────────────────────────────────────────────
+
 const globalForRedis = globalThis as unknown as {
   redis?: IORedis;
 };
 
+// ── Public API: Redis connection ─────────────────────────────────────────────
+
+/** @internal Shared Redis connection. Used by rate limiter and BullMQ queue. Server-only. */
 export const redis =
   globalForRedis.redis ??
   new IORedis(env.REDIS_URL, {

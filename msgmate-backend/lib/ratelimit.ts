@@ -1,18 +1,33 @@
 import { randomUUID } from "crypto";
 import { redis } from "./redis";
 
-type CheckRateLimitOptions = {
+// ── Public Types ─────────────────────────────────────────────────────────────
+
+export type CheckRateLimitOptions = {
   key: string;
   limit: number;
   windowMs: number;
 };
 
-type CheckRateLimitResult = {
+export type CheckRateLimitResult = {
   success: boolean;
   remaining: number;
   reset: number;
 };
 
+// ── Public API: Rate limiting ────────────────────────────────────────────────
+
+/**
+ * Checks if a request is within the rate limit using a Redis sliding window.
+ *
+ * Uses a Redis sorted set keyed by `ratelimit:{endpoint}:{userId}`.
+ * On Redis failure, fails open (allows the request) to avoid blocking users
+ * during infrastructure issues.
+ *
+ * @internal — only used internally by API route handlers. Must never be called
+ * from the extension or exposed to client-side code. If bypassed, users could
+ * make unlimited AI requests and rack up costs.
+ */
 export async function checkRateLimit({
   key,
   limit,
@@ -57,7 +72,7 @@ export async function checkRateLimit({
   } catch (error) {
     console.error("[ratelimit]", error);
 
-    // Fallback if Redis is unavailable
+    // Fallback if Redis is unavailable — fail open
     return {
       success: true,
       remaining: Infinity,
